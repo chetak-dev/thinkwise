@@ -1,6 +1,8 @@
 services:
   - type: web
-    name: thinkwise-realtime
+    # Singapore is Render's closest region to India; regions can't be changed after creation, hence the new name.
+    name: thinkwise-realtime-sg
+    region: singapore
     runtime: node
     plan: free
     buildCommand: npm ci --workspace @thinkwise/server --workspace @thinkwise/shared
@@ -20,7 +22,7 @@ services:
         value: production
       - key: TRUST_PROXY
         value: "1"
-      # The website's address, e.g. https://thinkwise.vercel.app
+      # Every address players open the site from, comma separated, e.g. https://quiz.example.org,https://thinkwise.vercel.app
       - key: ALLOWED_ORIGINS
         sync: false
       # https://<website>/api/internal/game-results
