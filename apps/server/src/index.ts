@@ -1126,10 +1126,16 @@ const http = createServer((req, res) => {
 });
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 });
+const loggedOrigins = new Set<string>();
 
 http.on('upgrade', (req, socket, head) => {
   const path = (req.url ?? '').split('?')[0];
   if (path !== '/ws' || !originAllowed(req.headers.origin)) {
+    const origin = String(req.headers.origin ?? '(none)').slice(0, 200);
+    if (path === '/ws' && loggedOrigins.size < 50 && !loggedOrigins.has(origin)) {
+      loggedOrigins.add(origin);
+      console.warn(`Refused a game connection from ${origin}; add it to ALLOWED_ORIGINS if it is your site.`);
+    }
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     socket.destroy();
     return;
