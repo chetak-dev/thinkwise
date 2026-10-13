@@ -924,6 +924,71 @@ test('put in order arrives shuffled and scores by position; ratings never change
   for (const x of [h, a.c, b.c]) x.close();
 });
 
+test('polls count picks, take one or several options and never change scores', async () => {
+  const quiz = {
+    title: 'Polls',
+    questions: [
+      { type: 'poll', text: 'Favourite?', options: ['Red', 'Blue', 'Green'], correct: [], timeLimitMs: 10_000, points: 0 },
+      { type: 'poll', text: 'Any you like?', options: ['Tea', 'Coffee'], correct: [], allowMultiple: true, timeLimitMs: 10_000, points: 0 },
+    ],
+  };
+  const res = await fetch(`http://127.0.0.1:${PORT}/games`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer dev-only-realtime-secret' },
+    body: JSON.stringify({ quiz }),
+  });
+  const created = (await res.json()) as { gameId: string; pin: string; hostToken: string };
+  const h = new Client();
+  await h.open();
+  h.send({ t: 'host:resume', gameId: created.gameId, hostToken: created.hostToken });
+  assert.equal((await h.next('host:ready')).questionCount, 2);
+  const a = await player(created.pin, 'Vani');
+  const b = await player(created.pin, 'Wasim');
+
+  let markA = a.c.mark();
+  let markB = b.c.mark();
+  let markH = h.mark();
+  h.send({ t: 'host:start' });
+  const q1 = await a.c.next('question', markA);
+  assert.equal(q1.question.multiple, undefined);
+  a.c.send({ t: 'player:answer', index: 0, choices: [0, 1] });
+  assert.equal((await a.c.next('error', markA)).code, 'bad_request', 'single-choice polls take one pick');
+  a.c.send({ t: 'player:answer', index: 0, choice: 1 });
+  b.c.send({ t: 'player:answer', index: 0, choice: 1 });
+  const reveal1 = await h.next('reveal', markH);
+  assert.deepEqual(reveal1.counts, [0, 2, 0]);
+  assert.deepEqual(reveal1.correct, []);
+  const ra1 = await a.c.next('result', markA);
+  assert.deepEqual([ra1.isCorrect, ra1.points, ra1.score], [false, 0, 0]);
+  await b.c.next('result', markB);
+
+  markA = a.c.mark();
+  markB = b.c.mark();
+  markH = h.mark();
+  h.send({ t: 'host:next' });
+  const q2 = await a.c.next('question', markA);
+  assert.equal(q2.question.multiple, true);
+  a.c.send({ t: 'player:answer', index: 1, choices: [1, 0, 1] });
+  b.c.send({ t: 'player:answer', index: 1, choices: [1] });
+  const reveal2 = await h.next('reveal', markH);
+  assert.deepEqual(reveal2.counts, [1, 2]);
+
+  markA = a.c.mark();
+  h.send({ t: 'host:end' });
+  const fin = await a.c.next('final', markA);
+  assert.equal(fin.questionCount, 0, 'polls never count towards "correct"');
+  assert.deepEqual([fin.me?.score, fin.me?.correctCount], [0, 0]);
+
+  const deadline = Date.now() + 3_000;
+  while (!reports.some((r) => r.body.gameId === created.gameId) && Date.now() < deadline) await sleep(50);
+  const report = reports.find((r) => r.body.gameId === created.gameId)!.body;
+  const vani = report.players.find((p) => p.nickname === 'Vani')!;
+  assert.deepEqual(vani.answers.find((x) => x.q === 0)?.choices, [1]);
+  assert.deepEqual(vani.answers.find((x) => x.q === 1)?.choices, [0, 1], 'duplicates dropped and sorted');
+
+  for (const x of [h, a.c, b.c]) x.close();
+});
+
 test('a host connection can open a fresh lobby and stops hearing the old game', async () => {
   const { c: h, ready: first } = await host();
   const a = await player(first.pin, 'Kiran');

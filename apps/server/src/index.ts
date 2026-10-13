@@ -254,6 +254,7 @@ function publicQuestion(game: Game): PublicQuestion {
     ...(q.hint ? { hint: q.hint } : {}),
     ...(q.penalty ? { penalty: q.penalty } : {}),
     ...(q.type === 'rating' ? { scale: { min: q.ratingMin, max: q.ratingMax } } : {}),
+    ...(q.type === 'poll' && q.allowMultiple ? { multiple: true } : {}),
   };
 }
 
@@ -464,13 +465,15 @@ function readAnswer(q: Quiz['questions'][number], input: AnswerInput): ReadAnswe
     if (value === undefined || !Number.isInteger(value) || value < q.ratingMin || value > q.ratingMax) return null;
     return { choices: [], number: value, isCorrect: false, credit: 0 };
   }
-  if (q.type === 'multi') {
+  if (q.type === 'multi' || (q.type === 'poll' && q.allowMultiple)) {
     const choices = [...new Set(input.choices ?? [])].sort((a, b) => a - b);
     if (choices.length === 0 || choices.some((c) => c >= q.options.length)) return null;
+    if (q.type === 'poll') return { choices, isCorrect: false, credit: 0 };
     const isCorrect = choices.length === q.correct.length && choices.every((c) => q.correct.includes(c));
     return { choices, isCorrect };
   }
   if (input.choice === undefined || input.choice >= q.options.length) return null;
+  if (q.type === 'poll') return { choices: [input.choice], isCorrect: false, credit: 0 };
   return { choices: [input.choice], isCorrect: q.correct.includes(input.choice) };
 }
 
@@ -619,7 +622,7 @@ function resultsPayload(game: Game): GameResults {
         const { choices, ...rest } = publicAnswer(a);
         const type = game.quiz.questions[q]?.type;
         const given =
-          type === 'mc' || type === 'tf' ? { choice: choices[0] } : type === 'multi' || type === 'order' ? { choices } : rest;
+          type === 'mc' || type === 'tf' ? { choice: choices[0] } : type === 'multi' || type === 'order' || type === 'poll' ? { choices } : rest;
         return { q, ...given, isCorrect: a.isCorrect, points: a.points, timeMs: a.timeMs };
       }),
     })),

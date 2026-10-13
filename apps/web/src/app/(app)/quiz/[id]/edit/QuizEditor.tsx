@@ -321,6 +321,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
     }
     if (type === 'numeric' || type === 'blanks' || type === 'rating') return updateCurrent({ type, options, correct: [] });
     if (type === 'order') return updateCurrent({ type, options: current.type === 'tf' ? ['', '', ''] : options, correct: [] });
+    if (type === 'poll') return updateCurrent({ type, options, correct: [] });
     const kept = usesOptions(current.type) && current.type !== 'tf' ? current.correct : [];
     updateCurrent({ type, options, correct: type === 'mc' ? [kept[0] ?? 0] : kept.length ? kept : [0] });
   };
@@ -440,6 +441,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
   const isBlanks = current.type === 'blanks';
   const isOrder = current.type === 'order';
   const isRating = current.type === 'rating';
+  const isPoll = current.type === 'poll';
   const scored = isScored(current.type);
 
   return (
@@ -958,10 +960,10 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
               </div>
             ) : (
               <div className="space-y-3">
-                <p className="text-sm text-muted">{isMulti ? 'Tick every correct answer.' : 'Tick the correct answer.'}</p>
+                {!isPoll && <p className="text-sm text-muted">{isMulti ? 'Tick every correct answer.' : 'Tick the correct answer.'}</p>}
                 <div
-                  role={isMulti ? 'group' : 'radiogroup'}
-                  aria-label={isMulti ? 'Correct answers' : 'Correct answer'}
+                  role={isPoll ? 'group' : isMulti ? 'group' : 'radiogroup'}
+                  aria-label={isPoll ? 'Poll options' : isMulti ? 'Correct answers' : 'Correct answer'}
                   className="grid gap-3 sm:grid-cols-2"
                 >
                   {current.options.map((option, i) => {
@@ -983,18 +985,20 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                             className="min-w-0 flex-1 bg-transparent py-2 font-semibold text-white placeholder:text-white/60 focus:outline-none"
                           />
                         )}
-                        <button
-                          type="button"
-                          role={isMulti ? 'checkbox' : 'radio'}
-                          aria-checked={checked}
-                          aria-label={`Mark ${name} as correct`}
-                          onClick={() => (isMulti ? toggleCorrect(i) : updateCurrent({ correct: [i] }))}
-                          className={`flex size-9 shrink-0 items-center justify-center ${isMulti ? 'rounded-lg' : 'rounded-full'} border-2 border-white/80 transition ${
-                            checked ? 'bg-white text-emerald-700' : 'hover:bg-white/20'
-                          }`}
-                        >
-                          {checked && <Check className="size-5" strokeWidth={3} aria-hidden="true" />}
-                        </button>
+                        {!isPoll && (
+                          <button
+                            type="button"
+                            role={isMulti ? 'checkbox' : 'radio'}
+                            aria-checked={checked}
+                            aria-label={`Mark ${name} as correct`}
+                            onClick={() => (isMulti ? toggleCorrect(i) : updateCurrent({ correct: [i] }))}
+                            className={`flex size-9 shrink-0 items-center justify-center ${isMulti ? 'rounded-lg' : 'rounded-full'} border-2 border-white/80 transition ${
+                              checked ? 'bg-white text-emerald-700' : 'hover:bg-white/20'
+                            }`}
+                          >
+                            {checked && <Check className="size-5" strokeWidth={3} aria-hidden="true" />}
+                          </button>
+                        )}
                         {!isTf && (
                           <button
                             type="button"
@@ -1020,6 +1024,15 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                     <Plus className="size-4" aria-hidden="true" />
                     Add answer
                   </button>
+                )}
+                {isPoll && (
+                  <div className="rounded-2xl border border-app bg-surface p-4">
+                    <Switch
+                      checked={current.allowMultiple}
+                      onChange={(allowMultiple) => updateCurrent({ allowMultiple })}
+                      label="Allow multiple choices"
+                    />
+                  </div>
                 )}
               </div>
             )}
@@ -1192,6 +1205,9 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {isMulti && <p className="text-center text-sm font-semibold text-muted sm:col-span-2">Pick every right answer, then submit</p>}
+              {isPoll && current.allowMultiple && (
+                <p className="text-center text-sm font-semibold text-muted sm:col-span-2">Pick as many as you like, then submit</p>
+              )}
               {current.options.map((option, i) => {
                 const style = answerStyle(i);
                 return (

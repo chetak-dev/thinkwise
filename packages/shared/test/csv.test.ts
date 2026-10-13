@@ -32,7 +32,7 @@ test('parses quotes, escaped quotes, CRLF, BOM and blank lines', () => {
 test('the template imports cleanly', () => {
   const { questions, errors } = csvToQuestions(CSV_TEMPLATE, id);
   assert.deepEqual(errors, []);
-  assert.equal(questions.length, 9);
+  assert.equal(questions.length, 10);
   assert.deepEqual(questions[0]?.options, ['Venus', 'Mars', 'Jupiter', 'Saturn']);
   assert.deepEqual(questions[0]?.correct, [1]);
   assert.equal(questions[0]?.timeLimitMs, 20_000);
@@ -46,8 +46,10 @@ test('the template imports cleanly', () => {
   assert.equal(questions[5]?.numericAnswer, 150);
   assert.deepEqual(questions[6]?.blanks, [['Pacific'], ['Nile', 'River Nile']]);
   assert.deepEqual(questions[7]?.options, ['Mercury', 'Venus', 'Earth', 'Mars']);
-  assert.equal(questions[8]?.ratingMax, 5);
-  assert.equal(questions[8]?.points, 0);
+  assert.equal(questions[8]?.type, 'poll');
+  assert.deepEqual(questions[8]?.options, ['Planets', 'Oceans', 'Volcanoes']);
+  assert.equal(questions[9]?.ratingMax, 5);
+  assert.equal(questions[9]?.points, 0);
 });
 
 test('ordering and rating rows', () => {
@@ -123,7 +125,7 @@ test('reports each bad row with its row number and keeps the good ones', () => {
     'single,Only one option,A,,1,,',
     'single,Correct out of range,A,B,3,,',
     'true_false,Maybe?,,,perhaps,,',
-    'poll,Favourite colour?,Red,Blue,,,',
+    'word_cloud,Describe it in a word,,,,,',
     'banana,What?,A,B,1,,',
     'single,Bad time,A,B,1,7,',
     'single,Bad points,A,B,1,,999',
@@ -155,6 +157,8 @@ test('export round-trips and neutralises spreadsheet formulas', () => {
     { ...newQuestion('blanks', 'f'), text: 'A ___ and a ___', blanks: [['cat'], ['dog', 'puppy']] },
     { ...newQuestion('order', 'g'), text: 'Order', options: ['first', 'second', 'third'] },
     { ...newQuestion('rating', 'h'), text: 'Rate', ratingMin: 0, ratingMax: 10 },
+    { ...newQuestion('poll', 'i'), text: 'Favourite?', options: ['Red', 'Blue'], allowMultiple: true },
+    { ...newQuestion('poll', 'j'), text: 'One only', options: ['Yes', 'No'] },
   ];
   const csv = questionsToCsv(qs);
   assert.ok(csv.includes("'=SUM(A1)") && csv.includes("'+1") && csv.includes("'@cmd"), 'formula cells are prefixed');
@@ -175,6 +179,11 @@ test('export round-trips and neutralises spreadsheet formulas', () => {
   assert.deepEqual(back.questions[5]?.blanks, [['cat'], ['dog', 'puppy']]);
   assert.deepEqual(back.questions[6]?.options, ['first', 'second', 'third']);
   assert.deepEqual([back.questions[7]?.ratingMin, back.questions[7]?.ratingMax], [0, 10]);
+  assert.deepEqual([back.questions[8]?.type, back.questions[8]?.allowMultiple, back.questions[8]?.points], ['poll', true, 0]);
+  assert.deepEqual(back.questions[8]?.options, ['Red', 'Blue']);
+  assert.deepEqual(back.questions[8]?.correct, []);
+  assert.equal(back.questions[9]?.allowMultiple, false);
+  assert.match(csvToQuestions('type,question,option1,option2,correct\npoll,Q,A,B,2', id).errors[0]!.message, /multiple/);
 });
 
 test('typed answers ignore spacing and, unless asked, letter case', () => {
@@ -232,4 +241,18 @@ test('playable quizzes enforce the shape of each question type', () => {
   assert.ok(!ok({ type: 'order', options: ['a', 'b'], correct: [0] }), 'order needs the full sequence');
   assert.ok(ok({ type: 'rating', options: [], correct: [], ratingMin: 0, ratingMax: 10 }));
   assert.ok(!ok({ type: 'rating', options: [], correct: [], ratingMax: 11 }));
+
+  assert.ok(ok({ type: 'poll', options: ['A', 'B'], correct: [], allowMultiple: true, points: 0 }));
+  assert.ok(!ok({ type: 'poll', options: ['A', 'B'], correct: [0] }), 'polls have no correct answer');
+  assert.ok(!ok({ type: 'poll', options: ['A'], correct: [] }), 'polls need two options');
+  const poll = { ...newQuestion('poll', 'p'), text: 'Pick', options: ['A', ' B ', ''], points: 1000, allowMultiple: true };
+  assert.deepEqual(newQuestion('poll').correct, []);
+  assert.deepEqual(questionIssues(poll), ['Fill in or remove empty answers']);
+  const polled = toPlayable('T', [{ ...poll, options: ['A', ' B '] }, { ...order, allowMultiple: true }]);
+  assert.ok(polled.ok);
+  if (polled.ok) {
+    assert.deepEqual(polled.quiz.questions[0]!.options, ['A', 'B']);
+    assert.deepEqual([polled.quiz.questions[0]!.points, polled.quiz.questions[0]!.allowMultiple], [0, true], 'polls never score');
+    assert.equal(polled.quiz.questions[1]!.allowMultiple, false, 'only polls keep the setting');
+  }
 });

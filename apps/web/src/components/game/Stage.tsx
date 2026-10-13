@@ -268,6 +268,11 @@ export function Stage({
           {question.type === 'multi' && phase === 'question' && (
             <p className={`font-semibold text-muted ${big ? 'text-xl' : 'text-sm'}`}>Pick every right answer</p>
           )}
+          {question.type === 'poll' && phase === 'question' && (
+            <p className={`font-semibold text-muted ${big ? 'text-xl' : 'text-sm'}`}>
+              {question.multiple ? 'Poll · pick as many as you like' : 'Poll · no right or wrong answer'}
+            </p>
+          )}
         </div>
 
         {!usesOptions(question.type) && question.type !== 'order' && question.type !== 'rating' && (
@@ -356,7 +361,8 @@ export function Stage({
               const share = total > 0 ? count / total : 0;
               const showCounts = settings.liveCounts || phase === 'reveal';
               const isCorrect = correct.includes(i);
-              const dimmed = phase === 'reveal' && !isCorrect;
+              // Polls (and quizzes that hide answers) have nothing to highlight, so keep every option bright.
+              const dimmed = phase === 'reveal' && correct.length > 0 && !isCorrect;
               return (
                 <div
                   key={i}

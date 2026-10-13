@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const QUESTION_TYPES = ['mc', 'multi', 'tf', 'text', 'blanks', 'numeric', 'order', 'rating'] as const;
+export const QUESTION_TYPES = ['mc', 'multi', 'tf', 'text', 'blanks', 'numeric', 'order', 'poll', 'rating'] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
 export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   mc: 'Multiple choice',
@@ -10,17 +10,18 @@ export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   blanks: 'Fill in the blanks',
   numeric: 'Numeric',
   order: 'Put in order',
+  poll: 'Poll',
   rating: 'Rating scale',
 };
 
 /** Types where players pick from the question's options. */
 export function usesOptions(type: QuestionType) {
-  return type === 'mc' || type === 'multi' || type === 'tf';
+  return type === 'mc' || type === 'multi' || type === 'tf' || type === 'poll';
 }
 
 /** Opinion questions have no right answer and never change scores. */
 export function isScored(type: QuestionType) {
-  return type !== 'rating';
+  return type !== 'rating' && type !== 'poll';
 }
 
 export const RATING_MIN_VALUES = [0, 1] as const;
@@ -194,6 +195,8 @@ export const DraftQuestion = z.object({
   partialCredit: z.boolean().default(true),
   ratingMin: RatingMin.default(1),
   ratingMax: RatingMax.default(5),
+  /** Polls only: players may pick more than one option. */
+  allowMultiple: z.boolean().default(false),
   timeLimitMs: TimeLimitMs,
   points: Points,
   imageUrl: z.string().max(IMAGE_URL_MAX).default(''),
@@ -225,6 +228,7 @@ const PlayableQuestion = z
     partialCredit: z.boolean().default(true),
     ratingMin: RatingMin.default(1),
     ratingMax: RatingMax.default(5),
+    allowMultiple: z.boolean().default(false),
     timeLimitMs: TimeLimitMs,
     points: Points,
     imageUrl: z.string().max(IMAGE_URL_MAX).refine((u) => u === '' || isImageUrl(u), 'Invalid image link').default(''),
@@ -257,6 +261,10 @@ const PlayableQuestion = z
       return;
     }
     if (q.options.length < MIN_OPTIONS) problem('Add at least two options');
+    if (q.type === 'poll') {
+      if (q.correct.length !== 0) problem('Polls have no correct answer');
+      return;
+    }
     if (q.type === 'multi' ? q.correct.length === 0 : q.correct.length !== 1) problem('Wrong number of correct answers');
   });
 
@@ -274,7 +282,7 @@ export function newQuestion(type: DraftQuestion['type'] = 'mc', id = Math.random
     type,
     text: '',
     options: type === 'tf' ? [...TRUE_FALSE_OPTIONS] : type === 'order' ? ['', '', ''] : ['', '', '', ''],
-    correct: usesOptions(type) ? [0] : [],
+    correct: usesOptions(type) && type !== 'poll' ? [0] : [],
     accepted: type === 'text' ? [''] : [],
     caseSensitive: false,
     numericAnswer: null,
@@ -283,6 +291,7 @@ export function newQuestion(type: DraftQuestion['type'] = 'mc', id = Math.random
     partialCredit: true,
     ratingMin: 1,
     ratingMax: 5,
+    allowMultiple: false,
     timeLimitMs: 20_000,
     points: isScored(type) ? 1000 : 0,
     imageUrl: '',
@@ -338,6 +347,7 @@ export function questionIssues(q: DraftQuestion): string[] {
     return issues;
   }
   if (filled < q.options.length) issues.push('Fill in or remove empty answers');
+  if (q.type === 'poll') return issues;
   if (q.type === 'multi') {
     if (q.correct.length === 0) issues.push('Tick at least one correct answer');
     return issues;
@@ -371,7 +381,7 @@ export function toPlayable(title: string, questions: DraftQuestion[], settings?:
         correct:
           q.type === 'order'
             ? q.options.map((_, i) => i)
-            : !usesOptions(q.type)
+            : !usesOptions(q.type) || q.type === 'poll'
               ? []
               : q.type === 'multi'
                 ? [...new Set(q.correct)].sort((a, b) => a - b)
@@ -384,6 +394,7 @@ export function toPlayable(title: string, questions: DraftQuestion[], settings?:
         partialCredit: (q.type === 'blanks' || q.type === 'order') && q.partialCredit,
         ratingMin: q.ratingMin,
         ratingMax: q.ratingMax,
+        allowMultiple: q.type === 'poll' && q.allowMultiple,
         timeLimitMs: q.timeLimitMs,
         points: isScored(q.type) ? q.points : 0,
         imageUrl: q.imageUrl.trim(),

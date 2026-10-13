@@ -62,10 +62,11 @@ const TYPE_ALIASES: Record<string, DraftQuestion['type']> = {
   ordering: 'order',
   order: 'order',
   put_in_order: 'order',
+  poll: 'poll',
   rating: 'rating',
   rating_scale: 'rating',
 };
-const NOT_YET = ['poll', 'word_cloud'];
+const NOT_YET = ['word_cloud'];
 
 /** Type names written on export, matching the template. */
 const EXPORT_TYPES: Record<DraftQuestion['type'], string> = {
@@ -76,6 +77,7 @@ const EXPORT_TYPES: Record<DraftQuestion['type'], string> = {
   numeric: 'numeric',
   blanks: 'fill_blank',
   order: 'ordering',
+  poll: 'poll',
   rating: 'rating',
 };
 
@@ -95,6 +97,7 @@ export const CSV_TEMPLATE = [
   'numeric,How many seconds are there in 2.5 minutes?,,,,,,,150,30,1000,,maths',
   'fill_blank,The ___ is the largest ocean and the ___ is the longest river.,,,,,,,Pacific|Nile;River Nile,45,1000,,geography',
   'ordering,Put these planets in order from the Sun,Mercury,Venus,Earth,Mars,,,,30,1000,,space',
+  'poll,Which topic should we revise next?,Planets,Oceans,Volcanoes,,,,,20,0,,',
   'rating,How confident do you feel about this topic?,,,,,,,1-5,20,0,,',
 ].join('\r\n');
 
@@ -175,13 +178,18 @@ export function csvToQuestions(text: string, makeId: () => string): CsvImport {
     const q = newQuestion(type, makeId());
     q.text = text;
 
-    if (type === 'mc' || type === 'multi' || type === 'order') {
+    if (type === 'mc' || type === 'multi' || type === 'order' || type === 'poll') {
       const options = (['option1', 'option2', 'option3', 'option4', 'option5', 'option6'] as const).map(get).filter(Boolean);
       if (options.length < MIN_OPTIONS) return fail(type === 'order' ? 'Add at least two items, in the right order.' : 'Add at least two options.');
       if (options.length > MAX_OPTIONS) return fail(`Use at most ${MAX_OPTIONS} options.`);
       if (options.some((o) => o.length > OPTION_TEXT_MAX)) return fail(`An option is longer than ${OPTION_TEXT_MAX} characters.`);
       q.options = options;
-      if (type === 'order') {
+      if (type === 'poll') {
+        const mode = get('correct').toLowerCase();
+        if (mode !== '' && mode !== 'multiple') return fail('“correct” is empty for a poll, or “multiple” to let players pick several.');
+        q.allowMultiple = mode === 'multiple';
+        q.points = 0;
+      } else if (type === 'order') {
         if (new Set(options.map((o) => o.toLowerCase())).size < options.length) return fail('Every item must be different.');
         q.correct = [];
       } else {
@@ -275,11 +283,13 @@ export function toCsv(rows: (string | number)[][]): string {
 
 export function questionsToCsv(questions: DraftQuestion[]): string {
   const lines = questions.map((q) => {
-    const options = q.type === 'mc' || q.type === 'multi' || q.type === 'order' ? q.options : [];
+    const options = q.type === 'mc' || q.type === 'multi' || q.type === 'order' || q.type === 'poll' ? q.options : [];
     const correct =
       q.type === 'order'
         ? ''
-        : q.type === 'rating'
+        : q.type === 'poll'
+          ? (q.allowMultiple ? 'multiple' : '')
+          : q.type === 'rating'
           ? `${q.ratingMin}-${q.ratingMax}`
           : q.type === 'tf'
             ? q.correct[0] === 1

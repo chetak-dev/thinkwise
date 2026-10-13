@@ -299,11 +299,11 @@ function AnswerButtons({
   if (question.type === 'rating' && question.scale) {
     return <RatingAnswer scale={question.scale} onSubmit={onSubmit} disabled={disabled} />;
   }
-  const multi = question.type === 'multi';
+  const multi = question.type === 'multi' || (question.type === 'poll' && question.multiple === true);
   const toggle = (i: number) => setPicked((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]));
   return (
     <div className="space-y-4">
-      {multi && <p className="text-center text-sm font-semibold text-muted">{t.pickAll}</p>}
+      {multi && <p className="text-center text-sm font-semibold text-muted">{question.type === 'poll' ? t.pickAny : t.pickAll}</p>}
       <div className="grid grid-cols-2 gap-3">
         {question.options.map((_, i) => {
           const style = answerStyle(i);
@@ -423,13 +423,15 @@ function AnswerSummary({
     );
   }
   const picks = answer?.choices ?? [];
+  // Polls and quizzes that hide answers send no right options; then the player's own picks get the tick.
+  const right = correct?.length ? correct : null;
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       {question.options.map((_, i) => {
         const style = answerStyle(i);
         const isPick = picks.includes(i);
-        const isRight = correct?.includes(i) ?? false;
-        const faded = correct ? !isRight && !isPick : !isPick;
+        const isRight = right?.includes(i) ?? false;
+        const faded = right ? !isRight && !isPick : !isPick;
         return (
           <div
             key={i}
@@ -442,8 +444,8 @@ function AnswerSummary({
             </span>
             <span className="sr-only">{style.letter}.</span>
             <span className="min-w-0 flex-1 break-words leading-snug">{optionLabel(question, i, t)}</span>
-            {(correct ? isRight : isPick) && (
-              <Check className="size-7 shrink-0" aria-label={correct ? 'Correct answer' : 'Your answer'} />
+            {(right ? isRight : isPick) && (
+              <Check className="size-7 shrink-0" aria-label={right ? 'Correct answer' : 'Your answer'} />
             )}
           </div>
         );

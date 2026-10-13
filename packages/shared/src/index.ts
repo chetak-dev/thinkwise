@@ -77,7 +77,7 @@ export const ClientMessage = z.discriminatedUnion('t', [
     index: z.number().int().min(0).max(500),
     /** Single-choice and true/false. */
     choice: z.number().int().min(0).max(9).optional(),
-    /** Multi-select. */
+    /** Multi-select, put in order and multiple-choice polls. */
     choices: z.array(z.number().int().min(0).max(MAX_OPTIONS - 1)).min(1).max(MAX_OPTIONS).optional(),
     /** Type answer. */
     text: z.string().max(ANSWER_TEXT_MAX).optional(),
@@ -117,6 +117,8 @@ export interface PublicQuestion {
   penalty?: number;
   /** Rating questions: the lowest and highest value players can pick. */
   scale?: { min: number; max: number };
+  /** Polls where players may pick several options. */
+  multiple?: boolean;
 }
 
 export interface HostSettings {
