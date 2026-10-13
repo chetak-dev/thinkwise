@@ -304,7 +304,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                       </p>
                     )}
                     <ul className="mt-3 space-y-1.5">
-                      {(q.answerKey
+                      {(q.answerKey || q.type === 'cloud'
                         ? q.textCounts.map((r) => ({ label: r.text, count: r.count, isCorrect: r.isCorrect }))
                         : q.options.map((label, i) => ({ label, count: q.optionCounts[i] ?? 0, isCorrect: q.correct.includes(i) }))
                       ).map(({ label, count, isCorrect }, i) => {

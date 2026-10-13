@@ -6,11 +6,15 @@ import {
   CLOSE_KICKED,
   CLOSE_REPLACED,
   PlayableQuiz,
+  CLOUD_ANSWER_MAX,
   blanksRight,
+  countWords,
   isAcceptedAnswer,
   isNumberMatch,
   isScored,
+  normaliseAnswer,
   type AnswerKey,
+  type CloudWord,
   type ErrorCode,
   type GameResults,
   type HostSettings,
@@ -51,6 +55,7 @@ const LEADERBOARD_SIZE = 10;
 const PODIUM_SIZE = 5;
 const MAX_STREAK_STEPS = 5;
 const RECENT_ANSWERS = 8;
+const CLOUD_WORDS_SHOWN = 50;
 
 type Phase = 'lobby' | 'question' | 'reveal' | 'leaderboard' | 'finished';
 
@@ -105,6 +110,8 @@ interface Game {
   endsAt: number | null;
   pausedRemainingMs: number | null;
   counts: number[];
+  /** Word cloud responses grouped ignoring case and spacing. */
+  words: Map<string, CloudWord>;
   answered: number;
   recent: RecentAnswer[];
   progressDirty: boolean;
@@ -238,8 +245,21 @@ function lobbyPlayers(game: Game): LobbyPlayer[] {
   }));
 }
 
+function cloudWords(game: Game): { words?: CloudWord[] } {
+  if (game.quiz.questions[game.qIndex]?.type !== 'cloud') return {};
+  const words = [...game.words.values()].sort((a, b) => b.count - a.count).slice(0, CLOUD_WORDS_SHOWN);
+  return { words };
+}
+
 function progressMsg(game: Game): ServerMessage {
-  return { t: 'progress', answered: game.answered, total: game.players.size, counts: game.counts, recent: game.recent };
+  return {
+    t: 'progress',
+    answered: game.answered,
+    total: game.players.size,
+    counts: game.counts,
+    recent: game.recent,
+    ...cloudWords(game),
+  };
 }
 
 function publicQuestion(game: Game): PublicQuestion {
@@ -255,6 +275,7 @@ function publicQuestion(game: Game): PublicQuestion {
     ...(q.penalty ? { penalty: q.penalty } : {}),
     ...(q.type === 'rating' ? { scale: { min: q.ratingMin, max: q.ratingMax } } : {}),
     ...(q.type === 'poll' && q.allowMultiple ? { multiple: true } : {}),
+    ...(q.type === 'cloud' ? { maxWords: q.maxWords } : {}),
   };
 }
 
@@ -312,6 +333,7 @@ function revealMsg(game: Game): ServerMessage {
     correct: show ? q.correct : [],
     ...answerKey(q, show),
     counts: game.counts,
+    ...cloudWords(game),
     answered: game.answered,
     rightCount,
     total: game.players.size,
@@ -390,6 +412,7 @@ function startQuestion(game: Game, index: number) {
   game.endsAt = Date.now() + q.timeLimitMs;
   game.pausedRemainingMs = null;
   game.counts = q.type === 'rating' ? Array.from({ length: q.ratingMax - q.ratingMin + 1 }, () => 0) : q.options.map(() => 0);
+  game.words = new Map();
   game.answered = 0;
   game.recent = [];
   game.progressDirty = true;
@@ -440,6 +463,11 @@ function readAnswer(q: Quiz['questions'][number], input: AnswerInput): ReadAnswe
     if (input.text === undefined || !input.text.trim()) return null;
     const text = input.text.trim();
     return { choices: [], text, isCorrect: isAcceptedAnswer(text, q.accepted, q.caseSensitive) };
+  }
+  if (q.type === 'cloud') {
+    const text = (input.text ?? '').trim().replace(/\s+/g, ' ');
+    if (!text || text.length > CLOUD_ANSWER_MAX || countWords(text) > q.maxWords) return null;
+    return { choices: [], text, isCorrect: false, credit: 0 };
   }
   if (q.type === 'numeric') {
     if (input.number === undefined || q.numericAnswer === null) return null;
@@ -511,6 +539,11 @@ function submitAnswer(ws: WebSocket, game: Game, player: Player, index: number, 
   if (q.type === 'rating') {
     const slot = read.number! - q.ratingMin;
     game.counts[slot] = (game.counts[slot] ?? 0) + 1;
+  } else if (q.type === 'cloud') {
+    const key = normaliseAnswer(read.text!);
+    const entry = game.words.get(key);
+    if (entry) entry.count += 1;
+    else game.words.set(key, { text: read.text!, count: 1 });
   } else if (q.type !== 'order') {
     for (const c of read.choices) game.counts[c] = (game.counts[c] ?? 0) + 1;
   }
@@ -845,6 +878,7 @@ function createGame(ws: WebSocket | null, quiz: Quiz = SAMPLE_QUIZ): Game {
     endsAt: null,
     pausedRemainingMs: null,
     counts: [],
+    words: new Map(),
     answered: 0,
     recent: [],
     progressDirty: false,

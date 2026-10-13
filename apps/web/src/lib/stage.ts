@@ -1,5 +1,6 @@
 import type {
   AnswerKey,
+  CloudWord,
   HostSettings,
   LobbyPlayer,
   PublicQuestion,
@@ -18,6 +19,7 @@ export interface StageProgress {
   total: number;
   counts: number[];
   recent: RecentAnswer[];
+  words: CloudWord[];
 }
 
 export interface StageState {
@@ -99,6 +101,7 @@ export function stageReducer(state: StageState, msg: ServerMessage): StageState 
             ? Array.from({ length: msg.question.scale.max - msg.question.scale.min + 1 }, () => 0)
             : msg.question.options.map(() => 0),
           recent: [],
+          words: [],
         },
         correct: [],
         answerKey: {},
@@ -110,7 +113,7 @@ export function stageReducer(state: StageState, msg: ServerMessage): StageState 
     case 'progress':
       return {
         ...state,
-        progress: { answered: msg.answered, total: msg.total, counts: msg.counts, recent: msg.recent },
+        progress: { answered: msg.answered, total: msg.total, counts: msg.counts, recent: msg.recent, words: msg.words ?? [] },
       };
     case 'reveal':
       return {
@@ -125,6 +128,7 @@ export function stageReducer(state: StageState, msg: ServerMessage): StageState 
           total: msg.total,
           counts: msg.counts,
           recent: state.progress?.recent ?? [],
+          words: msg.words ?? [],
         },
       };
     case 'leaderboard':

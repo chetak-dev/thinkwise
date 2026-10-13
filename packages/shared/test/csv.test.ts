@@ -32,7 +32,7 @@ test('parses quotes, escaped quotes, CRLF, BOM and blank lines', () => {
 test('the template imports cleanly', () => {
   const { questions, errors } = csvToQuestions(CSV_TEMPLATE, id);
   assert.deepEqual(errors, []);
-  assert.equal(questions.length, 10);
+  assert.equal(questions.length, 11);
   assert.deepEqual(questions[0]?.options, ['Venus', 'Mars', 'Jupiter', 'Saturn']);
   assert.deepEqual(questions[0]?.correct, [1]);
   assert.equal(questions[0]?.timeLimitMs, 20_000);
@@ -48,8 +48,9 @@ test('the template imports cleanly', () => {
   assert.deepEqual(questions[7]?.options, ['Mercury', 'Venus', 'Earth', 'Mars']);
   assert.equal(questions[8]?.type, 'poll');
   assert.deepEqual(questions[8]?.options, ['Planets', 'Oceans', 'Volcanoes']);
-  assert.equal(questions[9]?.ratingMax, 5);
-  assert.equal(questions[9]?.points, 0);
+  assert.deepEqual([questions[9]?.type, questions[9]?.maxWords, questions[9]?.points], ['cloud', 1, 0]);
+  assert.equal(questions[10]?.ratingMax, 5);
+  assert.equal(questions[10]?.points, 0);
 });
 
 test('ordering and rating rows', () => {
@@ -125,7 +126,7 @@ test('reports each bad row with its row number and keeps the good ones', () => {
     'single,Only one option,A,,1,,',
     'single,Correct out of range,A,B,3,,',
     'true_false,Maybe?,,,perhaps,,',
-    'word_cloud,Describe it in a word,,,,,',
+    'word_cloud,Too many words,,,9,,',
     'banana,What?,A,B,1,,',
     'single,Bad time,A,B,1,7,',
     'single,Bad points,A,B,1,,999',
@@ -136,7 +137,7 @@ test('reports each bad row with its row number and keeps the good ones', () => {
     errors.map((e) => e.row),
     [3, 4, 5, 6, 7, 8, 9, 10],
   );
-  assert.match(errors[4]!.message, /aren’t supported yet/);
+  assert.match(errors[4]!.message, /most words per response/);
   assert.match(errors[5]!.message, /Unknown type/);
 });
 
@@ -159,6 +160,7 @@ test('export round-trips and neutralises spreadsheet formulas', () => {
     { ...newQuestion('rating', 'h'), text: 'Rate', ratingMin: 0, ratingMax: 10 },
     { ...newQuestion('poll', 'i'), text: 'Favourite?', options: ['Red', 'Blue'], allowMultiple: true },
     { ...newQuestion('poll', 'j'), text: 'One only', options: ['Yes', 'No'] },
+    { ...newQuestion('cloud', 'k'), text: 'In three words?', maxWords: 3 },
   ];
   const csv = questionsToCsv(qs);
   assert.ok(csv.includes("'=SUM(A1)") && csv.includes("'+1") && csv.includes("'@cmd"), 'formula cells are prefixed');
@@ -183,6 +185,7 @@ test('export round-trips and neutralises spreadsheet formulas', () => {
   assert.deepEqual(back.questions[8]?.options, ['Red', 'Blue']);
   assert.deepEqual(back.questions[8]?.correct, []);
   assert.equal(back.questions[9]?.allowMultiple, false);
+  assert.deepEqual([back.questions[10]?.type, back.questions[10]?.maxWords], ['cloud', 3]);
   assert.match(csvToQuestions('type,question,option1,option2,correct\npoll,Q,A,B,2', id).errors[0]!.message, /multiple/);
 });
 
@@ -254,5 +257,17 @@ test('playable quizzes enforce the shape of each question type', () => {
     assert.deepEqual(polled.quiz.questions[0]!.options, ['A', 'B']);
     assert.deepEqual([polled.quiz.questions[0]!.points, polled.quiz.questions[0]!.allowMultiple], [0, true], 'polls never score');
     assert.equal(polled.quiz.questions[1]!.allowMultiple, false, 'only polls keep the setting');
+  }
+
+  assert.ok(ok({ type: 'cloud', options: [], correct: [], maxWords: 5, points: 0 }));
+  assert.ok(!ok({ type: 'cloud', options: [], correct: [], maxWords: 6 }), 'at most five words');
+  assert.ok(!ok({ type: 'cloud', options: ['A', 'B'], correct: [] }), 'word clouds have no options');
+  const cloud = { ...newQuestion('cloud', 'w'), text: 'One word?', points: 1000, penalty: 250 };
+  assert.deepEqual(questionIssues(cloud), []);
+  const clouded = toPlayable('T', [cloud]);
+  assert.ok(clouded.ok);
+  if (clouded.ok) {
+    const q = clouded.quiz.questions[0]!;
+    assert.deepEqual([q.options, q.points, q.penalty, q.maxWords], [[], 0, 0, 1], 'word clouds never score');
   }
 });

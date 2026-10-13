@@ -110,11 +110,11 @@ export function ImportCsvDialog({
             <code>type</code> is <code>single</code> (one right answer), <code>multiple</code> (several right answers),{' '}
             <code>true_false</code>, <code>short_text</code> (players type the answer), <code>numeric</code>,{' '}
             <code>fill_blank</code> (mark blanks with <code>___</code>), <code>ordering</code> (items in option1… in the right
-            order), <code>poll</code> or <code>rating</code>. <code>correct</code> is the option number, like{' '}
+            order), <code>poll</code>, <code>word_cloud</code> or <code>rating</code>. <code>correct</code> is the option number, like{' '}
             <code>2</code>; several numbers, like <code>1;3</code>; the accepted answers, like <code>Na;Sodium</code>; a number,
             optionally with a margin like <code>10±0.5</code>; answers per blank separated by <code>|</code>, like{' '}
             <code>Pacific|Nile;River Nile</code>; a rating scale like <code>1-5</code>; <code>multiple</code> for a poll where players
-            can pick several; or <code>true</code>/<code>false</code>. <code>time</code> is in seconds. Empty
+            can pick several; the most words per word cloud response (1–5); or <code>true</code>/<code>false</code>. <code>time</code> is in seconds. Empty
             time and points use 20 s and 1000. Save from Excel or Google Sheets as CSV.
           </p>
         </details>

@@ -104,6 +104,12 @@ export interface AnswerKey {
   blankAnswers?: string[][];
 }
 
+/** One grouped word cloud response and how many players gave it. */
+export interface CloudWord {
+  text: string;
+  count: number;
+}
+
 /** What players and hosts see of a question. Never includes the correct answer. */
 export interface PublicQuestion {
   index: number;
@@ -119,6 +125,8 @@ export interface PublicQuestion {
   scale?: { min: number; max: number };
   /** Polls where players may pick several options. */
   multiple?: boolean;
+  /** Word clouds: the most words one response may have. */
+  maxWords?: number;
 }
 
 export interface HostSettings {
@@ -204,13 +212,15 @@ export type ServerMessage =
   | { t: 'soundtrack'; track: TrackId }
   | { t: 'question'; question: PublicQuestion; timer: TimerState; myAnswer?: PlayerAnswer | null }
   | { t: 'timer'; timer: TimerState }
-  | { t: 'progress'; answered: number; total: number; counts: number[]; recent: RecentAnswer[] }
+  | { t: 'progress'; answered: number; total: number; counts: number[]; recent: RecentAnswer[]; words?: CloudWord[] }
   | { t: 'answer:ok'; index: number; answer: PlayerAnswer }
   | ({
       t: 'reveal';
       index: number;
       correct: number[];
       counts: number[];
+      /** Word clouds: the most common responses. */
+      words?: CloudWord[];
       answered: number;
       /** Players who got it right. */
       rightCount: number;

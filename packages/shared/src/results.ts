@@ -195,7 +195,7 @@ export function computeReport(
         numberTotals[a.q]! += a.number;
         const slot = a.number - Number(s.options[0] ?? 0);
         if (slot >= 0 && slot < s.optionCounts.length) s.optionCounts[slot]! += 1;
-      } else if (s.answerKey) {
+      } else if (s.answerKey || s.type === 'cloud') {
         const said = describeAnswer(s, a).trim();
         const key = `${a.isCorrect ? 1 : 0}|${normaliseAnswer(said)}`;
         const entry = texts[a.q]!.get(key) ?? { text: said, count: 0, isCorrect: a.isCorrect };

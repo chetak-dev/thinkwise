@@ -75,7 +75,10 @@ export default async function SharedQuizPage({ params }: { params: Promise<{ id:
                 Scale {q.ratingMin}–{q.ratingMax}
               </p>
             )}
-            {!usesOptions(q.type) && q.type !== 'rating' && (
+            {q.type === 'cloud' && (
+              <p className="mt-2 text-sm text-muted">{q.maxWords === 1 ? 'One word' : `Up to ${q.maxWords} words`} per response</p>
+            )}
+            {!usesOptions(q.type) && q.type !== 'rating' && q.type !== 'cloud' && (
               <p className="mt-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
                 {q.type === 'numeric' ? 'Answer' : q.type === 'order' ? 'Right order' : 'Accepted'}:{' '}
                 {answerKeyText({ ...q, numericAnswer: q.numericAnswer ?? undefined })}

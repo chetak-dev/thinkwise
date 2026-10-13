@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const QUESTION_TYPES = ['mc', 'multi', 'tf', 'text', 'blanks', 'numeric', 'order', 'poll', 'rating'] as const;
+export const QUESTION_TYPES = ['mc', 'multi', 'tf', 'text', 'blanks', 'numeric', 'order', 'poll', 'cloud', 'rating'] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
 export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   mc: 'Multiple choice',
@@ -11,6 +11,7 @@ export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   numeric: 'Numeric',
   order: 'Put in order',
   poll: 'Poll',
+  cloud: 'Word cloud',
   rating: 'Rating scale',
 };
 
@@ -21,7 +22,16 @@ export function usesOptions(type: QuestionType) {
 
 /** Opinion questions have no right answer and never change scores. */
 export function isScored(type: QuestionType) {
-  return type !== 'rating' && type !== 'poll';
+  return type !== 'rating' && type !== 'poll' && type !== 'cloud';
+}
+
+export const MAX_WORDS_VALUES = [1, 2, 3, 4, 5] as const;
+/** Word cloud responses stay short so they fit in the cloud. */
+export const CLOUD_ANSWER_MAX = 80;
+
+export function countWords(value: string) {
+  const clean = value.trim();
+  return clean ? clean.split(/\s+/).length : 0;
 }
 
 export const RATING_MIN_VALUES = [0, 1] as const;
@@ -175,6 +185,10 @@ const RatingMax = z
   .number()
   .int()
   .refine((n) => (RATING_MAX_VALUES as readonly number[]).includes(n), 'Unsupported scale end');
+const MaxWords = z
+  .number()
+  .int()
+  .refine((n) => (MAX_WORDS_VALUES as readonly number[]).includes(n), 'Unsupported word limit');
 
 /** A question as saved by the editor. Drafts may be incomplete; fields added later default for older saves. */
 export const DraftQuestion = z.object({
@@ -197,6 +211,8 @@ export const DraftQuestion = z.object({
   ratingMax: RatingMax.default(5),
   /** Polls only: players may pick more than one option. */
   allowMultiple: z.boolean().default(false),
+  /** Word clouds only: the most words one response may have. */
+  maxWords: MaxWords.default(1),
   timeLimitMs: TimeLimitMs,
   points: Points,
   imageUrl: z.string().max(IMAGE_URL_MAX).default(''),
@@ -229,6 +245,7 @@ const PlayableQuestion = z
     ratingMin: RatingMin.default(1),
     ratingMax: RatingMax.default(5),
     allowMultiple: z.boolean().default(false),
+    maxWords: MaxWords.default(1),
     timeLimitMs: TimeLimitMs,
     points: Points,
     imageUrl: z.string().max(IMAGE_URL_MAX).refine((u) => u === '' || isImageUrl(u), 'Invalid image link').default(''),
@@ -246,7 +263,7 @@ const PlayableQuestion = z
       return;
     }
     if (!usesOptions(q.type) && (q.options.length !== 0 || q.correct.length !== 0)) problem('This question type has no options');
-    if (q.type === 'rating') return;
+    if (q.type === 'rating' || q.type === 'cloud') return;
     if (q.type === 'text') {
       if (q.accepted.length === 0) problem('Add at least one accepted answer');
       return;
@@ -292,6 +309,7 @@ export function newQuestion(type: DraftQuestion['type'] = 'mc', id = Math.random
     ratingMin: 1,
     ratingMax: 5,
     allowMultiple: false,
+    maxWords: 1,
     timeLimitMs: 20_000,
     points: isScored(type) ? 1000 : 0,
     imageUrl: '',
@@ -335,6 +353,7 @@ export function questionIssues(q: DraftQuestion): string[] {
     if (q.ratingMin >= q.ratingMax) issues.push('The scale must go up from its lowest value');
     return issues;
   }
+  if (q.type === 'cloud') return issues;
   const filled = q.options.filter((o) => o.trim()).length;
   if (q.type === 'order') {
     if (filled < MIN_OPTIONS) issues.push('Add at least two items');
@@ -395,6 +414,7 @@ export function toPlayable(title: string, questions: DraftQuestion[], settings?:
         ratingMin: q.ratingMin,
         ratingMax: q.ratingMax,
         allowMultiple: q.type === 'poll' && q.allowMultiple,
+        maxWords: q.maxWords,
         timeLimitMs: q.timeLimitMs,
         points: isScored(q.type) ? q.points : 0,
         imageUrl: q.imageUrl.trim(),

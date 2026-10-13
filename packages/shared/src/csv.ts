@@ -13,6 +13,7 @@ import {
   TRUE_FALSE_OPTIONS,
   MAX_BLANKS,
   RATING_MAX_VALUES,
+  MAX_WORDS_VALUES,
   countBlanks,
   newQuestion,
   parseNumberAnswer,
@@ -63,10 +64,11 @@ const TYPE_ALIASES: Record<string, DraftQuestion['type']> = {
   order: 'order',
   put_in_order: 'order',
   poll: 'poll',
+  word_cloud: 'cloud',
+  wordcloud: 'cloud',
   rating: 'rating',
   rating_scale: 'rating',
 };
-const NOT_YET = ['word_cloud'];
 
 /** Type names written on export, matching the template. */
 const EXPORT_TYPES: Record<DraftQuestion['type'], string> = {
@@ -78,6 +80,7 @@ const EXPORT_TYPES: Record<DraftQuestion['type'], string> = {
   blanks: 'fill_blank',
   order: 'ordering',
   poll: 'poll',
+  cloud: 'word_cloud',
   rating: 'rating',
 };
 
@@ -98,6 +101,7 @@ export const CSV_TEMPLATE = [
   'fill_blank,The ___ is the largest ocean and the ___ is the longest river.,,,,,,,Pacific|Nile;River Nile,45,1000,,geography',
   'ordering,Put these planets in order from the Sun,Mercury,Venus,Earth,Mars,,,,30,1000,,space',
   'poll,Which topic should we revise next?,Planets,Oceans,Volcanoes,,,,,20,0,,',
+  'word_cloud,Describe today’s lesson in one word,,,,,,,,30,0,,',
   'rating,How confident do you feel about this topic?,,,,,,,1-5,20,0,,',
 ].join('\r\n');
 
@@ -168,7 +172,7 @@ export function csvToQuestions(text: string, makeId: () => string): CsvImport {
     const rawType = get('type').toLowerCase() || 'single';
     const type = TYPE_ALIASES[rawType];
     if (!type) {
-      return fail(NOT_YET.includes(rawType) ? `“${rawType}” questions aren’t supported yet.` : `Unknown type “${rawType}”.`);
+      return fail(`Unknown type “${rawType}”.`);
     }
 
     const text = get('question');
@@ -204,6 +208,12 @@ export function csvToQuestions(text: string, makeId: () => string): CsvImport {
         }
         q.correct = [...new Set(correct.map((c) => c - 1))].sort((a, b) => a - b);
       }
+    } else if (type === 'cloud') {
+      const limit = get('correct');
+      const max = limit === '' ? 1 : Number(limit);
+      if (!(MAX_WORDS_VALUES as readonly number[]).includes(max)) return fail('“correct” is the most words per response (1–5), or empty for 1.');
+      q.maxWords = max;
+      q.points = 0;
     } else if (type === 'rating') {
       const scale = get('correct');
       const match = /^([01])\s*[-–]\s*(\d{1,2})$/.exec(scale);
@@ -289,6 +299,8 @@ export function questionsToCsv(questions: DraftQuestion[]): string {
         ? ''
         : q.type === 'poll'
           ? (q.allowMultiple ? 'multiple' : '')
+          : q.type === 'cloud'
+            ? (q.maxWords > 1 ? String(q.maxWords) : '')
           : q.type === 'rating'
           ? `${q.ratingMin}-${q.ratingMax}`
           : q.type === 'tf'

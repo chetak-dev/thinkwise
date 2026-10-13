@@ -28,6 +28,7 @@ import {
 import {
   ANSWER_TEXT_MAX,
   MAX_BLANKS,
+  MAX_WORDS_VALUES,
   NUMBER_LIMIT,
   RATING_MAX_VALUES,
   RATING_MIN_VALUES,
@@ -319,7 +320,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
     if (type === 'text') {
       return updateCurrent({ type, options, correct: [], accepted: current.accepted.length ? current.accepted : [''] });
     }
-    if (type === 'numeric' || type === 'blanks' || type === 'rating') return updateCurrent({ type, options, correct: [] });
+    if (type === 'numeric' || type === 'blanks' || type === 'rating' || type === 'cloud') return updateCurrent({ type, options, correct: [] });
     if (type === 'order') return updateCurrent({ type, options: current.type === 'tf' ? ['', '', ''] : options, correct: [] });
     if (type === 'poll') return updateCurrent({ type, options, correct: [] });
     const kept = usesOptions(current.type) && current.type !== 'tf' ? current.correct : [];
@@ -442,6 +443,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
   const isOrder = current.type === 'order';
   const isRating = current.type === 'rating';
   const isPoll = current.type === 'poll';
+  const isCloud = current.type === 'cloud';
   const scored = isScored(current.type);
 
   return (
@@ -801,6 +803,26 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                 </div>
                 <p className="text-xs text-muted">
                   Players tap a number. The big screen shows how the room rated it and the average. Ratings are never scored.
+                </p>
+              </div>
+            ) : isCloud ? (
+              <div className="space-y-3 rounded-2xl border border-app bg-surface p-4">
+                <label className="block space-y-1.5 text-sm font-semibold">
+                  Max words per response
+                  <select
+                    value={current.maxWords}
+                    onChange={(e) => updateCurrent({ maxWords: Number(e.target.value) })}
+                    className={SELECT_CLASS}
+                  >
+                    {MAX_WORDS_VALUES.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-xs text-muted">
+                  Responses are grouped and shown as a live word cloud on the host screen. Unscored.
                 </p>
               </div>
             ) : isNumeric ? (
@@ -1188,7 +1210,10 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
             </div>
           ) : !usesOptions(current.type) ? (
             <div className="space-y-3">
-              {(isBlanks ? Array.from({ length: Math.max(1, blankCount) }, (_, i) => `Blank ${i + 1}`) : [isNumeric ? 'Type a number' : 'Type your answer']).map(
+              {(isBlanks
+                ? Array.from({ length: Math.max(1, blankCount) }, (_, i) => `Blank ${i + 1}`)
+                : [isNumeric ? 'Type a number' : isCloud ? (current.maxWords === 1 ? 'One word' : `Up to ${current.maxWords} words`) : 'Type your answer']
+              ).map(
                 (label) => (
                   <div
                     key={label}

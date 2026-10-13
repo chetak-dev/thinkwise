@@ -989,6 +989,49 @@ test('polls count picks, take one or several options and never change scores', a
   for (const x of [h, a.c, b.c]) x.close();
 });
 
+test('word clouds group responses live, enforce the word limit and never score', async () => {
+  const quiz = {
+    title: 'Cloud',
+    questions: [{ type: 'cloud', text: 'In two words?', options: [], correct: [], maxWords: 2, timeLimitMs: 10_000, points: 0 }],
+  };
+  const res = await fetch(`http://127.0.0.1:${PORT}/games`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer dev-only-realtime-secret' },
+    body: JSON.stringify({ quiz }),
+  });
+  const created = (await res.json()) as { gameId: string; pin: string; hostToken: string };
+  const h = new Client();
+  await h.open();
+  h.send({ t: 'host:resume', gameId: created.gameId, hostToken: created.hostToken });
+  await h.next('host:ready');
+  const a = await player(created.pin, 'Xena');
+  const b = await player(created.pin, 'Yash');
+  const c = await player(created.pin, 'Zoya');
+
+  const markA = a.c.mark();
+  let markH = h.mark();
+  h.send({ t: 'host:start' });
+  const q = await a.c.next('question', markA);
+  assert.equal(q.question.maxWords, 2);
+  a.c.send({ t: 'player:answer', index: 0, text: 'far too many words' });
+  assert.equal((await a.c.next('error', markA)).code, 'bad_request', 'over the word limit');
+  a.c.send({ t: 'player:answer', index: 0, text: ' Great   fun ' });
+  b.c.send({ t: 'player:answer', index: 0, text: 'great FUN' });
+  const progress = await h.next('progress', markH);
+  assert.ok(progress.words, 'hosts see the cloud while the clock runs');
+  markH = h.mark();
+  c.c.send({ t: 'player:answer', index: 0, text: 'Tiring' });
+  const reveal = await h.next('reveal', markH);
+  assert.deepEqual(reveal.words, [
+    { text: 'Great fun', count: 2 },
+    { text: 'Tiring', count: 1 },
+  ]);
+  const ra = await a.c.next('result', markA);
+  assert.deepEqual([ra.isCorrect, ra.points, ra.answer?.text], [false, 0, 'Great fun']);
+
+  for (const x of [h, a.c, b.c, c.c]) x.close();
+});
+
 test('a host connection can open a fresh lobby and stops hearing the old game', async () => {
   const { c: h, ready: first } = await host();
   const a = await player(first.pin, 'Kiran');

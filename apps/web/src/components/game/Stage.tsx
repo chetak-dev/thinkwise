@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, Copy, X } from 'lucide-react';
-import type { RecentAnswer } from '@thinkwise/shared';
+import type { CloudWord, RecentAnswer } from '@thinkwise/shared';
 import { DEFAULT_THEME, formatNumberAnswer, usesOptions } from '@thinkwise/shared';
 import { answerStyle } from '@/components/game/answers';
 import { Confetti } from '@/components/game/Confetti';
@@ -52,6 +52,57 @@ function AnswerFlights({ recent }: { recent: RecentAnswer[] }) {
           <span className="text-aqua-400">LOCKED IN</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+const CLOUD_COLOURS = ['text-nova-500', 'text-aqua-500', 'text-rose-500', 'text-amber-500', 'text-emerald-500'];
+
+function WordCloud({
+  words,
+  answered,
+  show,
+  revealed,
+  big,
+}: {
+  words: CloudWord[];
+  answered: number;
+  show: boolean;
+  revealed: boolean;
+  big: boolean;
+}) {
+  const peak = Math.max(1, ...words.map((w) => w.count));
+  // Biggest responses sit in the middle, smaller ones spread out to both sides.
+  const arranged: CloudWord[] = [];
+  words.forEach((w, i) => (i % 2 ? arranged.push(w) : arranged.unshift(w)));
+  const [minRem, maxRem] = big ? [1.25, 5] : [1, 3.25];
+  return (
+    <div
+      className={`rounded-[2rem] border p-6 text-center ${big ? 'border-white/10 bg-white/[.07] backdrop-blur-xl' : 'border-app bg-surface shadow-soft'}`}
+    >
+      {show && words.length > 0 ? (
+        <ul aria-label="Word cloud" className={`flex flex-wrap items-center justify-center gap-x-5 gap-y-2 ${big ? 'min-h-64' : 'min-h-40'}`}>
+          {arranged.map((w) => (
+            <li
+              key={w.text}
+              className={`animate-pop font-display font-bold leading-tight transition-all duration-500 ${CLOUD_COLOURS[words.indexOf(w) % CLOUD_COLOURS.length]}`}
+              style={{ fontSize: `${minRem + (maxRem - minRem) * Math.sqrt(w.count / peak)}rem` }}
+            >
+              {w.text}
+              <span className="sr-only">: {w.count}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className={`font-display font-bold ${big ? 'text-3xl' : 'text-xl'}`}>
+          {revealed ? 'No responses' : 'Players are typing their answers…'}
+        </p>
+      )}
+      {revealed && (
+        <p className={`mt-4 font-semibold text-muted tabular-nums ${big ? 'text-xl' : ''}`}>
+          {answered} {answered === 1 ? 'response' : 'responses'}
+        </p>
+      )}
     </div>
   );
 }
@@ -273,9 +324,14 @@ export function Stage({
               {question.multiple ? 'Poll · pick as many as you like' : 'Poll · no right or wrong answer'}
             </p>
           )}
+          {question.type === 'cloud' && phase === 'question' && (
+            <p className={`font-semibold text-muted ${big ? 'text-xl' : 'text-sm'}`}>
+              Word cloud · {question.maxWords && question.maxWords > 1 ? `up to ${question.maxWords} words` : 'one word'} each
+            </p>
+          )}
         </div>
 
-        {!usesOptions(question.type) && question.type !== 'order' && question.type !== 'rating' && (
+        {!usesOptions(question.type) && question.type !== 'order' && question.type !== 'rating' && question.type !== 'cloud' && (
           <div
             className={`rounded-[2rem] border p-6 text-center ${
               big ? 'border-white/10 bg-white/[.07] backdrop-blur-xl' : 'border-app bg-surface shadow-soft'
@@ -340,6 +396,16 @@ export function Stage({
               </p>
             )}
           </div>
+        )}
+
+        {question.type === 'cloud' && (
+          <WordCloud
+            words={progress?.words ?? []}
+            answered={progress?.answered ?? 0}
+            show={settings.liveCounts || phase === 'reveal'}
+            revealed={phase === 'reveal'}
+            big={big}
+          />
         )}
 
         {question.type === 'rating' && question.scale && (

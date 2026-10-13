@@ -7,8 +7,10 @@ import { ArrowDown, ArrowUp, Check, Feather, Lightbulb, Loader2, Volume2, Volume
 import {
   ANSWER_TEXT_MAX,
   AVATARS,
+  CLOUD_ANSWER_MAX,
   NICKNAME_MAX,
   countBlanks,
+  countWords,
   formatNumberAnswer,
   isScored,
   parseNumberAnswer,
@@ -162,19 +164,36 @@ function optionLabel(q: PublicQuestion, i: number, t: Strings) {
   return q.options[i]!;
 }
 
-function TypedAnswer({ t, onSubmit, disabled }: { t: Strings; onSubmit: (a: AnswerInput) => void; disabled: boolean }) {
+function TypedAnswer({
+  t,
+  onSubmit,
+  disabled,
+  maxWords,
+}: {
+  t: Strings;
+  onSubmit: (a: AnswerInput) => void;
+  disabled: boolean;
+  /** Word clouds: the most words allowed. */
+  maxWords?: number;
+}) {
   const [typed, setTyped] = useState('');
+  const tooMany = maxWords !== undefined && countWords(typed) > maxWords;
   return (
     <form
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-        if (typed.trim()) onSubmit({ text: typed.trim() });
+        if (typed.trim() && !tooMany) onSubmit({ text: typed.trim().replace(/\s+/g, ' ') });
       }}
     >
       <label htmlFor="typed-answer" className="sr-only">
         {t.typeAnswer}
       </label>
+      {maxWords !== undefined && (
+        <p id="typed-limit" className={`text-center text-sm font-semibold ${tooMany ? 'text-rose-600 dark:text-rose-400' : 'text-muted'}`}>
+          {tooMany ? t.tooManyWords(maxWords) : t.upToWords(maxWords)}
+        </p>
+      )}
       <input
         id="typed-answer"
         autoFocus
@@ -182,13 +201,15 @@ function TypedAnswer({ t, onSubmit, disabled }: { t: Strings; onSubmit: (a: Answ
         autoCapitalize="off"
         spellCheck={false}
         enterKeyHint="send"
-        maxLength={ANSWER_TEXT_MAX}
+        maxLength={maxWords !== undefined ? CLOUD_ANSWER_MAX : ANSWER_TEXT_MAX}
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
         placeholder={t.typeAnswer}
+        aria-describedby={maxWords !== undefined ? 'typed-limit' : undefined}
+        aria-invalid={tooMany || undefined}
         className={FIELD_CLASS}
       />
-      <button type="submit" disabled={disabled || !typed.trim()} className={SUBMIT_CLASS}>
+      <button type="submit" disabled={disabled || !typed.trim() || tooMany} className={SUBMIT_CLASS}>
         {t.submit}
       </button>
     </form>
@@ -291,6 +312,9 @@ function AnswerButtons({
 }) {
   const [picked, setPicked] = useState<number[]>([]);
   if (question.type === 'text') return <TypedAnswer t={t} onSubmit={onSubmit} disabled={disabled} />;
+  if (question.type === 'cloud') {
+    return <TypedAnswer t={t} onSubmit={onSubmit} disabled={disabled} maxWords={question.maxWords ?? 1} />;
+  }
   if (question.type === 'numeric') return <NumberAnswer t={t} onSubmit={onSubmit} disabled={disabled} />;
   if (question.type === 'blanks') {
     return <BlanksAnswer count={countBlanks(question.text)} t={t} onSubmit={onSubmit} disabled={disabled} />;
@@ -392,7 +416,7 @@ function AnswerSummary({
       </div>
     );
   }
-  if (question.type === 'text' || question.type === 'numeric' || question.type === 'blanks') {
+  if (question.type === 'text' || question.type === 'numeric' || question.type === 'blanks' || question.type === 'cloud') {
     const given =
       answer?.text ??
       (answer?.number !== undefined ? String(answer.number) : answer?.blanks?.map((b, i) => `${i + 1}. ${b || '—'}`).join('   '));
