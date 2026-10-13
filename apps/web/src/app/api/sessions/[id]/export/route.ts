@@ -1,6 +1,8 @@
 import { reportToCsv } from '@thinkwise/shared';
 import { getDb, getSessionReport } from '@thinkwise/db';
 import { getCurrentUser } from '@/lib/session';
+import { getTimeZone } from '@/lib/timeZone';
+import { isoDay } from '@/lib/time';
 
 /** Host-only spreadsheet of a finished game. */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -12,7 +14,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (report.status === 'live') return new Response('This game is still running.', { status: 409 });
 
   const csv = reportToCsv(report.questions, report.players, report.questionsAsked);
-  const day = report.createdAt.toISOString().slice(0, 10);
+  const day = isoDay(report.createdAt, await getTimeZone());
   const slug = report.title.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'game';
   return new Response(`\uFEFF${csv}\r\n`, {
     headers: {

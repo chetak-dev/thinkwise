@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { BookOpenCheck, Search } from 'lucide-react';
 import { LIBRARY_SCOPES, getDb, listQuizzes, sessionCounts, type LibraryScope } from '@thinkwise/db';
 import { requireUser } from '@/lib/session';
+import { getTimeZone } from '@/lib/timeZone';
 import { QuizCard } from '@/components/QuizCard';
 import { NewQuizButton } from '@/components/NewQuizButton';
 import { LibraryImportButton } from '@/components/LibraryImportButton';
@@ -28,7 +29,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
     : 'mine';
   const tab = TABS.find((t) => t.scope === scope)!;
   const quizzes = await listQuizzes(getDb(), user.id, { scope, q, orgId: user.orgId });
-  const counts = await sessionCounts(getDb(), user.id, quizzes.map((x) => x.id));
+  const [counts, timeZone] = await Promise.all([sessionCounts(getDb(), user.id, quizzes.map((x) => x.id)), getTimeZone()]);
 
   return (
     <div className="space-y-6">
@@ -83,6 +84,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           {quizzes.map((quiz) => (
             <QuizCard
               key={quiz.id}
+              timeZone={timeZone}
               quiz={{
                 id: quiz.id,
                 title: quiz.title,

@@ -8,7 +8,9 @@ import { QuizCard } from '@/components/QuizCard';
 import { NewQuizButton } from '@/components/NewQuizButton';
 import { SampleHostLink } from '@/components/SampleHostLink';
 import { Greeting } from '@/components/Greeting';
-import { MODE_LABELS, StatusBadge, formatDateTime } from '@/components/SessionBits';
+import { MODE_LABELS, StatusBadge } from '@/components/SessionBits';
+import { getTimeZone } from '@/lib/timeZone';
+import { formatDateTime } from '@/lib/time';
 
 export const metadata: Metadata = { title: 'Home · ThinkWise' };
 
@@ -30,10 +32,11 @@ function StatCard({ label, value, hint, Icon }: { label: string; value: number; 
 export default async function DashboardPage() {
   const user = await requireUser();
   const db = getDb();
-  const [orgName, recent, stats] = await Promise.all([
+  const [orgName, recent, stats, timeZone] = await Promise.all([
     getOrganisationName(db, user.orgId),
     listQuizzes(db, user.id, { limit: 6 }),
     dashboardStats(db, user.id, RECENT_SESSIONS),
+    getTimeZone(),
   ]);
   const counts = await sessionCounts(db, user.id, recent.map((q) => q.id));
   const total = stats.quizzes;
@@ -92,6 +95,7 @@ export default async function DashboardPage() {
             {recent.map((quiz) => (
               <QuizCard
                 key={quiz.id}
+                timeZone={timeZone}
                 quiz={{
                   id: quiz.id,
                   title: quiz.title,
@@ -140,7 +144,7 @@ export default async function DashboardPage() {
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{s.title}</p>
                   <p className="text-xs text-muted">
-                    <time dateTime={s.createdAt.toISOString()}>{formatDateTime(s.createdAt)}</time> · {MODE_LABELS[s.mode]}
+                    <time dateTime={s.createdAt.toISOString()}>{formatDateTime(s.createdAt, timeZone)}</time> · {MODE_LABELS[s.mode]}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3 text-sm">

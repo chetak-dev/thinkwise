@@ -12,6 +12,7 @@ import {
   setFavouriteAction,
 } from '@/app/(app)/quiz-actions';
 import { useHostQuiz } from '@/lib/hostQuiz';
+import { formatDate } from '@/lib/time';
 import { StartSessionDialog } from '@/components/StartSessionDialog';
 
 const BANNERS = [
@@ -43,7 +44,7 @@ export interface QuizCardData {
   updatedAt: string;
 }
 
-export function QuizCard({ quiz }: { quiz: QuizCardData }) {
+export function QuizCard({ quiz, timeZone }: { quiz: QuizCardData; timeZone: string }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -79,7 +80,8 @@ export function QuizCard({ quiz }: { quiz: QuizCardData }) {
     if (!confirmOpen && d.open) d.close();
   }, [confirmOpen]);
 
-  const updated = new Date(quiz.updatedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  // Same zone on server and browser, so the date never mismatches during hydration.
+  const updated = formatDate(new Date(quiz.updatedAt), timeZone);
 
   const toggleFavourite = () => {
     const next = !favourite;

@@ -5,6 +5,8 @@ import { ArrowLeft } from 'lucide-react';
 import { scoredQuestionCount } from '@thinkwise/shared';
 import { getDb, getSessionReport, type SessionPlayer } from '@thinkwise/db';
 import { requireUser } from '@/lib/session';
+import { getTimeZone } from '@/lib/timeZone';
+import { formatDate } from '@/lib/time';
 import { PrintButton } from '@/components/PrintButton';
 
 export const metadata: Metadata = { title: 'Certificates · ThinkWise' };
@@ -32,6 +34,7 @@ function Certificate({
   quiz,
   asked,
   date,
+  timeZone,
   pin,
   host,
 }: {
@@ -39,6 +42,7 @@ function Certificate({
   quiz: string;
   asked: number;
   date: Date;
+  timeZone: string;
   pin: string;
   host: string;
 }) {
@@ -72,7 +76,7 @@ function Certificate({
         <div className="text-left">
           <p className="font-semibold" style={{ color: INK }}>
             <time dateTime={date.toISOString()}>
-              {date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {formatDate(date, timeZone)}
             </time>
           </p>
           <p className="mt-1 border-t pt-1" style={{ borderColor: `${INK}4d` }}>
@@ -112,6 +116,7 @@ export default async function CertificatesPage({
   const players =
     report.status === 'live' ? [] : filter === 'all' ? report.players : report.players.filter((p) => p.rank <= Number(filter));
   const date = report.endedAt ?? report.createdAt;
+  const timeZone = await getTimeZone();
 
   return (
     <div className="space-y-6">
@@ -168,6 +173,7 @@ export default async function CertificatesPage({
               quiz={report.title}
               asked={scoredQuestionCount(report.questions, report.questionsAsked)}
               date={date}
+              timeZone={timeZone}
               pin={report.pin}
               host={user.name}
             />

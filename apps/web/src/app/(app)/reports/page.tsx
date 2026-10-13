@@ -3,13 +3,15 @@ import Link from 'next/link';
 import { BarChart3, Users } from 'lucide-react';
 import { getDb, listSessions } from '@thinkwise/db';
 import { requireUser } from '@/lib/session';
-import { MODE_LABELS, StatusBadge, formatDateTime } from '@/components/SessionBits';
+import { getTimeZone } from '@/lib/timeZone';
+import { formatDateTime } from '@/lib/time';
+import { MODE_LABELS, StatusBadge } from '@/components/SessionBits';
 
 export const metadata: Metadata = { title: 'Reports · ThinkWise' };
 
 export default async function ReportsPage() {
   const user = await requireUser('/reports');
-  const sessions = await listSessions(getDb(), user.id, 200);
+  const [sessions, timeZone] = await Promise.all([listSessions(getDb(), user.id, 200), getTimeZone()]);
 
   return (
     <div className="space-y-6">
@@ -50,7 +52,7 @@ export default async function ReportsPage() {
                     <p className="text-xs text-muted">PIN {s.pin}</p>
                   </td>
                   <td className="hidden px-5 py-3.5 text-muted sm:table-cell">
-                    <time dateTime={s.createdAt.toISOString()}>{formatDateTime(s.createdAt)}</time>
+                    <time dateTime={s.createdAt.toISOString()}>{formatDateTime(s.createdAt, timeZone)}</time>
                   </td>
                   <td className="hidden px-5 py-3.5 md:table-cell">{MODE_LABELS[s.mode]}</td>
                   <td className="px-5 py-3.5">

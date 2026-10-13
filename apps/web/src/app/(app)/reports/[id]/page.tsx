@@ -11,7 +11,9 @@ import {
 } from '@thinkwise/shared';
 import { getDb, getSessionReport, type SessionPlayer } from '@thinkwise/db';
 import { requireUser } from '@/lib/session';
-import { MODE_LABELS, StatusBadge, formatDateTime } from '@/components/SessionBits';
+import { getTimeZone } from '@/lib/timeZone';
+import { formatDateTime } from '@/lib/time';
+import { MODE_LABELS, StatusBadge } from '@/components/SessionBits';
 import { PrintButton } from '@/components/PrintButton';
 
 export const metadata: Metadata = { title: 'Report · ThinkWise' };
@@ -95,7 +97,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
           </Link>
           <h1 className="font-display text-3xl font-bold">{report.title}</h1>
           <p className="flex flex-wrap items-center gap-x-1.5 text-muted">
-            <time dateTime={report.createdAt.toISOString()}>{formatDateTime(report.createdAt)}</time> · {MODE_LABELS[report.mode]} · PIN{' '}
+            <time dateTime={report.createdAt.toISOString()}>{formatDateTime(report.createdAt, await getTimeZone())}</time> · {MODE_LABELS[report.mode]} · PIN{' '}
             {report.pin} · <StatusBadge status={report.status} />
           </p>
         </div>

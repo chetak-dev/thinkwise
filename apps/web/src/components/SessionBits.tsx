@@ -1,18 +1,5 @@
 import type { SessionStatus } from '@thinkwise/shared';
 
-const DATE_TIME = new Intl.DateTimeFormat('en-GB', {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-  hour12: true,
-});
-
-export function formatDateTime(date: Date) {
-  return DATE_TIME.format(date);
-}
-
 export const MODE_LABELS = { live: 'Live', self: 'Self-paced' } as const;
 
 const STATUS_STYLES: Record<SessionStatus, string> = {
