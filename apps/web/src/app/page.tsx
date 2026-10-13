@@ -91,9 +91,9 @@ export default async function Home() {
       </a>
       <div className="decorative arena-grid pointer-events-none absolute inset-x-0 top-0 -z-10 h-[58rem]" aria-hidden="true" />
 
-      <header className="glass-panel mx-3 mt-3 flex items-center justify-between rounded-2xl px-4 py-3 sm:px-6 xl:mx-auto xl:max-w-7xl">
-        <Logo className="text-xl" />
-        <nav aria-label="Account" className="flex items-center gap-2">
+      <header className="glass-panel mx-3 mt-3 flex items-center justify-between gap-2 rounded-2xl px-2.5 py-3 min-[360px]:px-3 sm:px-6 xl:mx-auto xl:max-w-7xl">
+        <Logo className="shrink-0 max-[359px]:text-base min-[360px]:max-sm:text-lg" />
+        <nav aria-label="Account" className="flex min-w-0 items-center gap-1 sm:gap-2">
           <Link href="/play" className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-muted hover:bg-surface-2 sm:inline-flex">
             Join a game
           </Link>
@@ -103,11 +103,12 @@ export default async function Home() {
             </Link>
           ) : (
             <>
-              <Link href="/login" className="rounded-xl px-3 py-2 text-sm font-semibold text-app hover:bg-surface-2">
+              <Link href="/login" className="whitespace-nowrap rounded-xl px-2 py-2 text-sm font-semibold text-app hover:bg-surface-2 min-[360px]:px-2.5 sm:px-3">
                 Sign in
               </Link>
-              <Link href="/register" className={BTN_SM}>
-                Create free account
+              <Link href="/register" className={`${BTN_SM} max-sm:px-3`}>
+                <span className="sm:hidden">Sign up</span>
+                <span className="hidden sm:inline">Create free account</span>
               </Link>
             </>
           )}
