@@ -21,7 +21,7 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import type { HostSettings, ServerMessage } from '@thinkwise/shared';
+import { isScored, type HostSettings, type ServerMessage } from '@thinkwise/shared';
 import { Logo } from '@/components/Logo';
 import { ConnectionBadge } from '@/components/ConnectionBadge';
 import { Switch } from '@/components/Switch';
@@ -258,7 +258,7 @@ export function HostClient() {
             <div className="space-y-2">
               <button type="button" onClick={() => send({ t: 'host:reveal' })} className={BTN_PRIMARY}>
                 <Eye className="size-5" aria-hidden="true" />
-                Reveal answer now
+                {question && !isScored(question.type) ? 'Show results now' : 'Reveal answer now'}
               </button>
               <div className="grid grid-cols-2 gap-2">
                 <button

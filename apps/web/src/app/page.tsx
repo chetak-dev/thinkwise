@@ -216,6 +216,9 @@ export default async function Home() {
             <Link href="/host" className="hover:text-app">
               Host a game
             </Link>
+            <Link href="/privacy" className="hover:text-app">
+              Privacy
+            </Link>
           </nav>
         </div>
       </footer>

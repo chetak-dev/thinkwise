@@ -584,7 +584,7 @@ function QuestionStage({
             {result.partsRight !== undefined && question.type === 'order' && (
               <p className="mt-1 text-sm font-semibold opacity-90">{t.placesRight(result.partsRight, question.options.length)}</p>
             )}
-            {showRank && <p className="mt-1 text-sm font-semibold opacity-90">{t.rankOf(result.rank, result.total)}</p>}
+            {showRank && scored && <p className="mt-1 text-sm font-semibold opacity-90">{t.rankOf(result.rank, result.total)}</p>}
           </div>
           {result.explanation && (
             <div className="animate-rise rounded-3xl border border-app bg-surface p-4 text-left shadow-soft">
@@ -992,7 +992,12 @@ function PlayFlow() {
               >
                 {t.joinButton}
               </button>
-              <p className="text-center text-[11px] text-muted">{t.privacyNote}</p>
+              <p className="text-center text-[11px] text-muted">
+                {t.privacyNote}{' '}
+                <Link href="/privacy" className="font-semibold underline hover:text-app">
+                  {t.privacyLink}
+                </Link>
+              </p>
             </form>
           </div>
         )}
