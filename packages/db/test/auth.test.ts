@@ -32,7 +32,7 @@ test('register creates a user with a bcrypt hash; email is normalised and unique
   assert.ok(!('passwordHash' in res.user), 'public user never carries the hash');
 
   const [row] = await db.select().from(users).where(eq(users.id, res.user.id));
-  assert.match(row!.passwordHash, /^\$2[aby]\$12\$/);
+  assert.match(row!.passwordHash ?? '', /^\$2[aby]\$12\$/);
   assert.notEqual(row!.passwordHash, 'correct horse');
 
   const dup = await auth.registerUser(db, { name: 'Other', email: 'riya@example.com', password: 'another pass' });
@@ -96,4 +96,34 @@ test('sessions: only the hash is stored, lookups work, expiry and sign-out end t
   const second = await auth.createSession(db, user.id);
   await auth.deleteSession(db, second.token);
   assert.equal(await auth.getSessionUser(db, second.token), null, 'signed-out session rejected');
+});
+
+test('Google sign-in creates passwordless accounts, links verified emails and never hijacks', async () => {
+  const google = (sub: string, email: string, emailVerified = true, name = 'Neha Rao') =>
+    auth.signInWithGoogle(db, { sub, email, emailVerified, name });
+
+  const fresh = await google('g-neha', ' Neha@Gmail.com ');
+  assert.equal(fresh?.email, 'neha@gmail.com');
+  assert.deepEqual([fresh?.name, fresh?.role, fresh?.orgId], ['Neha Rao', 'host', null]);
+  const [row] = await db.select().from(users).where(eq(users.id, fresh!.id));
+  assert.deepEqual([row!.passwordHash, row!.googleId], [null, 'g-neha']);
+  assert.equal(await auth.authenticate(db, 'neha@gmail.com', 'anything at all'), null, 'no password, no password sign-in');
+  assert.equal((await google('g-neha', 'neha@gmail.com'))?.id, fresh!.id, 'same Google account, same user');
+
+  const linked = await google('g-riya', 'riya@example.com');
+  const riya = (await auth.authenticate(db, 'riya@example.com', 'correct horse'))!;
+  assert.equal(linked?.id, riya.id, 'verified email links to the existing password account');
+  assert.equal(linked?.orgId, riya.orgId);
+  assert.equal((await google('g-riya', 'renamed@example.com'))?.id, riya.id, 'later sign-ins match by Google id');
+
+  assert.equal(await google('g-intruder', 'riya@example.com'), null, 'an email already linked to another Google account is refused');
+  assert.equal(await google('g-unverified', 'solo@example.com', false), null, 'unverified emails are never trusted');
+  assert.equal(await google('', 'blank@example.com'), null);
+  assert.equal(await google('g-bad', 'not-an-email'), null);
+
+  const nameless = await google('g-nameless', 'quiet.person@example.com', true, '  ');
+  assert.equal(nameless?.name, 'quiet.person', 'falls back to the email name');
+
+  const actions = (await db.select().from(auditLog)).map((a) => a.action);
+  assert.ok(['auth.register_google', 'auth.login_google', 'auth.link_google'].every((a) => actions.includes(a)));
 });

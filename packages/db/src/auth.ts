@@ -95,6 +95,47 @@ export async function authenticate(db: Db, email: string, password: string): Pro
   return user;
 }
 
+/** Signs in with a Google account, linking it to an existing account with the same verified email or creating one. */
+export async function signInWithGoogle(
+  db: Db,
+  profile: { sub: string; email: string; emailVerified: boolean; name: string },
+): Promise<PublicUser | null> {
+  const email = profile.email.trim().toLowerCase();
+  if (!profile.sub || profile.sub.length > 255 || !profile.emailVerified || !z.email().safeParse(email).success) return null;
+  const name = profile.name.trim().slice(0, 80) || email.split('@')[0]!;
+
+  const [byGoogle] = await db.select(publicColumns).from(users).where(eq(users.googleId, profile.sub)).limit(1);
+  let user: PublicUser | undefined = byGoogle;
+  let action = 'auth.login_google';
+  if (!user) {
+    const [byEmail] = await db
+      .select({ ...publicColumns, googleId: users.googleId })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+    if (byEmail) {
+      // An email already tied to a different Google account is never taken over.
+      if (byEmail.googleId) return null;
+      await db.update(users).set({ googleId: profile.sub }).where(eq(users.id, byEmail.id));
+      const { googleId: _, ...rest } = byEmail;
+      user = rest;
+      action = 'auth.link_google';
+    } else {
+      try {
+        [user] = await db.insert(users).values({ email, name, googleId: profile.sub }).returning(publicColumns);
+        action = 'auth.register_google';
+      } catch (err) {
+        // Two first sign-ins racing each other: the other one created the account.
+        if (!isUniqueViolation(err)) throw err;
+        [user] = await db.select(publicColumns).from(users).where(eq(users.googleId, profile.sub)).limit(1);
+        if (!user) return null;
+      }
+    }
+  }
+  await db.insert(auditLog).values({ orgId: user!.orgId, userId: user!.id, action });
+  return user!;
+}
+
 /** Returns the raw token for the cookie; only its hash is stored. */
 export async function createSession(db: Db, userId: string) {
   const token = randomBytes(32).toString('base64url');

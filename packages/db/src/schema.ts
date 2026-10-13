@@ -13,7 +13,10 @@ export const users = pgTable('users', {
   /** Always stored lower-cased and trimmed. */
   email: text('email').notNull().unique(),
   name: text('name').notNull(),
-  passwordHash: text('password_hash').notNull(),
+  /** Null for accounts that only sign in with Google. */
+  passwordHash: text('password_hash'),
+  /** Google's stable account id (the OpenID `sub`), once linked. */
+  googleId: text('google_id').unique(),
   role: text('role', { enum: ['host', 'org_admin'] }).notNull().default('host'),
   orgId: uuid('org_id').references(() => organisations.id, { onDelete: 'set null' }),
   locale: text('locale').notNull().default('en'),
