@@ -75,7 +75,7 @@ function Projector() {
             className="flex items-center gap-1.5 rounded-xl bg-surface-2 px-3 py-1.5 text-sm font-semibold transition hover:bg-ink-700"
           >
             {soundOn ? <Volume2 className="size-4" aria-hidden="true" /> : <VolumeX className="size-4" aria-hidden="true" />}
-            {soundOn ? 'Sound on' : 'Enable sound'}
+            {soundOn ? 'Music on' : 'Enable sound'}
           </button>
           {state.phase !== 'lobby' && state.phase !== 'connecting' && state.pin && (
             <span className="rounded-xl bg-surface-2 px-3 py-1.5 font-display font-bold tracking-wider">

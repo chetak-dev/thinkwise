@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import type { TrackId } from '@thinkwise/shared';
 
 export type Sfx = 'join' | 'start' | 'tick' | 'lock' | 'correct' | 'wrong' | 'reveal' | 'leaderboard' | 'fanfare';
@@ -114,10 +114,14 @@ let timerId: number | null = null;
 
 const mtof = (m: number) => 440 * 2 ** ((m - 69) / 12);
 
+const playingListeners = new Set<() => void>();
+const notifyPlaying = () => playingListeners.forEach((l) => l());
+
 function ensureContext() {
   if (ctx) return ctx;
   const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   ctx = new AC();
+  ctx.addEventListener('statechange', notifyPlaying);
   master = ctx.createGain();
   master.gain.value = 0.9 * volume;
   master.connect(ctx.destination);
@@ -247,6 +251,23 @@ export function setSoundEnabled(on: boolean) {
     stopMusic();
     void ctx?.suspend();
   }
+  notifyPlaying();
+}
+
+function isAudioPlaying() {
+  return enabled && ctx?.state === 'running';
+}
+
+/** True only while sound is on and the browser actually lets it play (autoplay rules can hold it back until a tap). */
+export function useAudioPlaying() {
+  return useSyncExternalStore(
+    (listener) => {
+      playingListeners.add(listener);
+      return () => playingListeners.delete(listener);
+    },
+    isAudioPlaying,
+    () => false,
+  );
 }
 
 export function resumeAudio() {

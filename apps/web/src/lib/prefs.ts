@@ -22,7 +22,7 @@ export const DEFAULT_PREFS: Prefs = {
   theme: 'system',
   textScale: 1,
   reduceMotion: false,
-  sound: false,
+  sound: true,
   music: true,
   volume: 1,
   lowData: false,

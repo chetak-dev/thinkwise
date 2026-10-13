@@ -41,7 +41,7 @@ import { useGameSocket } from '@/lib/useGameSocket';
 import { DEFAULT_RULES } from '@/lib/stage';
 import { usePrefs, type Lang } from '@/lib/prefs';
 import { LANGUAGES, STRINGS, type Strings } from '@/lib/i18n';
-import { playSfx, setSoundEnabled, useSound } from '@/lib/audio';
+import { playSfx, setSoundEnabled, useAudioPlaying, useSound } from '@/lib/audio';
 
 type Step = 'pin' | 'checking' | 'profile' | 'lobby' | 'question' | 'result' | 'leaderboard' | 'final' | 'kicked';
 
@@ -718,9 +718,11 @@ function PlayFlow() {
     prefs.volume,
   );
   useCountdownTicks(timer, step === 'question' && myAnswer === null, () => playSfx('tick'));
+  const audioPlaying = useAudioPlaying();
 
   const toggleSound = () => {
-    const next = !prefs.sound;
+    // Sound that is on but held back by the browser just needs this tap to start.
+    const next = !(prefs.sound && audioPlaying);
     setSoundEnabled(next);
     setPrefs({ sound: next });
   };
@@ -864,11 +866,12 @@ function PlayFlow() {
           <button
             type="button"
             onClick={toggleSound}
-            aria-label={prefs.sound ? `${t.sound}: on` : `${t.sound}: off`}
-            aria-pressed={prefs.sound}
+            aria-label={audioPlaying ? t.muteSound : t.enableSound}
+            title={audioPlaying ? t.muteSound : t.enableSound}
+            aria-pressed={audioPlaying}
             className="rounded-lg p-2 text-muted hover:bg-surface-2"
           >
-            {prefs.sound ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
+            {audioPlaying ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
           </button>
           <button
             type="button"

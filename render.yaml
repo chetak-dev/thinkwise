@@ -7,6 +7,14 @@ services:
     startCommand: npm run start -w @thinkwise/server
     healthCheckPath: /health
     autoDeploy: true
+    # Website-only changes must not restart the game server (that would end live games).
+    buildFilter:
+      paths:
+        - apps/server/**
+        - packages/shared/**
+        - package.json
+        - package-lock.json
+        - render.yaml
     envVars:
       - key: NODE_ENV
         value: production

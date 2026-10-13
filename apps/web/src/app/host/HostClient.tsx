@@ -31,7 +31,7 @@ import { useStageSounds } from '@/components/game/useStageSounds';
 import { INITIAL_STAGE, stageReducer } from '@/lib/stage';
 import { useGameSocket, type Send } from '@/lib/useGameSocket';
 import { usePrefs } from '@/lib/prefs';
-import { setSoundEnabled } from '@/lib/audio';
+import { setSoundEnabled, useAudioPlaying } from '@/lib/audio';
 import { HOST_SESSION_KEY, hostAction, rememberHostSession, rememberedQuiz } from '@/lib/hostQuiz';
 
 interface HostSession {
@@ -122,8 +122,9 @@ export function HostClient() {
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const audioPlaying = useAudioPlaying();
   const toggleSound = () => {
-    const next = !prefs.sound;
+    const next = !(prefs.sound && audioPlaying);
     setSoundEnabled(next);
     setPrefs({ sound: next });
   };
@@ -170,11 +171,11 @@ export function HostClient() {
         <button
           type="button"
           onClick={toggleSound}
-          aria-pressed={prefs.sound}
+          aria-pressed={audioPlaying}
           className="flex items-center gap-1.5 rounded-xl bg-surface-2 px-3 py-1.5 text-sm font-semibold transition hover:bg-nova-100 dark:hover:bg-ink-700"
         >
-          {prefs.sound ? <Volume2 className="size-4" aria-hidden="true" /> : <VolumeX className="size-4" aria-hidden="true" />}
-          {prefs.sound ? 'Sound on' : 'Enable sound'}
+          {audioPlaying ? <Volume2 className="size-4" aria-hidden="true" /> : <VolumeX className="size-4" aria-hidden="true" />}
+          {audioPlaying ? 'Music on' : 'Enable sound'}
         </button>
         <span
           className="flex items-center gap-1.5 rounded-xl bg-surface-2 px-3 py-1.5 text-sm font-bold tabular-nums"
