@@ -737,15 +737,18 @@ function flush() {
 
 // ---------- message handling ----------
 
-function allowPinAttempt(ip: string) {
+/** Only wrong PINs count: a whole class joining from one school network must never be throttled. */
+function tooManyWrongPins(ip: string) {
+  const entry = pinAttempts.get(ip);
+  if (!entry || Date.now() - entry.windowStart > 60_000) return false;
+  return entry.count >= PIN_ATTEMPTS_PER_MINUTE;
+}
+
+function recordWrongPin(ip: string) {
   const now = Date.now();
   const entry = pinAttempts.get(ip);
-  if (!entry || now - entry.windowStart > 60_000) {
-    pinAttempts.set(ip, { count: 1, windowStart: now });
-    return true;
-  }
-  entry.count += 1;
-  return entry.count <= PIN_ATTEMPTS_PER_MINUTE;
+  if (!entry || now - entry.windowStart > 60_000) pinAttempts.set(ip, { count: 1, windowStart: now });
+  else entry.count += 1;
 }
 
 function allowMessage(conn: Connection) {
@@ -758,12 +761,13 @@ function allowMessage(conn: Connection) {
 }
 
 function findJoinableGame(ws: WebSocket, pin: string, conn: Connection): Game | null {
-  if (!allowPinAttempt(conn.ip)) {
+  if (tooManyWrongPins(conn.ip)) {
     fail(ws, 'rate_limited', 'Too many attempts. Please wait a minute.');
     return null;
   }
   const game = gamesByPin.get(pin);
   if (!game) {
+    recordWrongPin(conn.ip);
     fail(ws, 'game_not_found', 'No game found with that PIN.');
     return null;
   }

@@ -26,13 +26,11 @@ before(async () => {
   const cwd = fileURLToPath(new URL('..', import.meta.url));
   server = spawn(process.execPath, ['--import', 'tsx', 'src/index.ts'], {
     cwd,
-    // Every test client shares 127.0.0.1, so the per-IP join limit is raised for the suite.
     env: {
       ...process.env,
       PORT: String(PORT),
       NODE_ENV: 'test',
       RESULTS_URL: `http://127.0.0.1:${RESULTS_PORT}/results`,
-      PIN_ATTEMPTS_PER_MINUTE: '200',
     },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
@@ -938,4 +936,26 @@ test('a host connection can open a fresh lobby and stops hearing the old game', 
   assert.equal(back.gameId, first.gameId);
 
   for (const x of [h, a.c, b.c]) x.close();
+});
+
+// Keep last: it deliberately uses up 127.0.0.1's wrong-PIN allowance.
+test('a whole class on one network can join; only wrong PINs are rate limited', async () => {
+  const { c: h, ready } = await host();
+  const players = await Promise.all(Array.from({ length: 40 }, (_, i) => player(ready.pin, `Student ${i + 1}`)));
+  assert.equal(players.length, 40, 'forty joins from one address all succeed');
+
+  const guesser = new Client();
+  await guesser.open();
+  const wrong = ready.pin === '999999' ? '999998' : '999999';
+  for (let i = 0; i < 20; i++) {
+    const mark = guesser.mark();
+    guesser.send({ t: 'pin:check', pin: wrong });
+    assert.equal((await guesser.next('error', mark)).code, 'game_not_found');
+    await sleep(110);
+  }
+  const mark = guesser.mark();
+  guesser.send({ t: 'pin:check', pin: ready.pin });
+  assert.equal((await guesser.next('error', mark)).code, 'rate_limited', 'twenty wrong PINs in a minute block further guesses');
+
+  for (const x of [h, guesser, ...players.map((p) => p.c)]) x.close();
 });
