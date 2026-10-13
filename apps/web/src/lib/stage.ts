@@ -81,11 +81,16 @@ export function stageReducer(state: StageState, msg: ServerMessage): StageState 
       return { ...state, settings: msg.settings };
     case 'lobby':
       return { ...state, players: msg.players, locked: msg.locked };
+    case 'answered': {
+      const ids = new Set(msg.ids);
+      return { ...state, players: state.players.map((p) => (ids.has(p.id) ? { ...p, answered: true } : p)) };
+    }
     case 'question':
       return {
         ...state,
         phase: 'question',
         question: msg.question,
+        players: state.players.map((p) => (p.answered ? { ...p, answered: false } : p)),
         timer: clockTimer(msg.timer),
         progress: {
           answered: 0,

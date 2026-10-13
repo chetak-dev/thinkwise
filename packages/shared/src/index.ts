@@ -184,6 +184,8 @@ export type ServerMessage =
     }
   | { t: 'screen:ready'; pin: string; quizTitle: string; questionCount: number; rules: PublicRules }
   | { t: 'lobby'; locked: boolean; players: LobbyPlayer[] }
+  /** Hosts only: players who answered since the last update, so big games don't resend the whole list. */
+  | { t: 'answered'; ids: string[] }
   | { t: 'settings'; settings: HostSettings }
   | { t: 'pin:ok'; pin: string }
   | {

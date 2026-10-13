@@ -39,6 +39,8 @@ const RESULTS_RETRY_MS = [0, 2_000, 10_000];
 const MAX_QUIZ_BODY_BYTES = 512 * 1024;
 
 const FLUSH_MS = 250;
+const LARGE_GAME = 100;
+const LARGE_LOBBY_FLUSH_MS = 1_000;
 const HEARTBEAT_MS = 30_000;
 const GAME_IDLE_TTL_MS = 2 * 60 * 60 * 1000;
 const PIN_ATTEMPTS_PER_MINUTE = Number(process.env.PIN_ATTEMPTS_PER_MINUTE) || 20;
@@ -91,6 +93,9 @@ interface Game {
   playersByToken: Map<string, Player>;
   locked: boolean;
   lobbyDirty: boolean;
+  lastLobbyFlush: number;
+  /** Players who answered since the last flush; hosts get these ids instead of the whole player list. */
+  newlyAnswered: string[];
   lastActivity: number;
   quiz: Quiz;
   settings: HostSettings;
@@ -104,6 +109,7 @@ interface Game {
   recent: RecentAnswer[];
   progressDirty: boolean;
   standings: Standing[];
+  ranks: Map<string, number>;
   closeTimer: ReturnType<typeof setTimeout> | null;
   phaseTimer: ReturnType<typeof setTimeout> | null;
   /** Saved-quiz games report their results to the web app; the sample quiz does not. */
@@ -143,7 +149,10 @@ function sendRaw(ws: WebSocket | null, raw: string) {
 
 // Hosts and projector screens see the same stage; only hosts may send commands.
 function toHosts(game: Game, msg: ServerMessage) {
-  const raw = JSON.stringify(msg);
+  toHostsRaw(game, JSON.stringify(msg));
+}
+
+function toHostsRaw(game: Game, raw: string) {
   for (const host of game.hosts) sendRaw(host, raw);
   for (const screen of game.screens) sendRaw(screen, raw);
 }
@@ -274,10 +283,11 @@ function computeStandings(game: Game) {
     score: p.score,
     rank: i + 1,
   }));
+  game.ranks = new Map(game.standings.map((s) => [s.id, s.rank]));
 }
 
 function rankOf(game: Game, player: Player) {
-  return game.standings.find((s) => s.id === player.id)?.rank ?? game.standings.length;
+  return game.ranks.get(player.id) ?? game.standings.length;
 }
 
 /** What counted as right for typed, numeric and blank questions; emptied when the quiz hides answers. */
@@ -507,7 +517,7 @@ function submitAnswer(ws: WebSocket, game: Game, player: Player, index: number, 
     RECENT_ANSWERS,
   );
   game.progressDirty = true;
-  game.lobbyDirty = true;
+  game.newlyAnswered.push(player.id);
   send(ws, { t: 'answer:ok', index, answer: publicAnswer(answer) });
   closeIfEveryoneAnswered(game);
 }
@@ -535,9 +545,8 @@ function closeQuestion(game: Game) {
     if (!p.answers.has(game.qIndex)) p.streak = 0;
   }
   computeStandings(game);
-  const ranks = new Map(game.standings.map((s) => [s.id, s.rank]));
   toHosts(game, revealMsg(game));
-  for (const p of game.players.values()) send(p.socket, resultMsg(game, p, ranks));
+  for (const p of game.players.values()) send(p.socket, resultMsg(game, p, game.ranks));
 
   if (game.settings.leaderboardAfterEach && game.quiz.rules.showLeaderboard) {
     game.phaseTimer = setTimeout(() => showLeaderboard(game), REVEAL_TO_LEADERBOARD_MS);
@@ -546,12 +555,19 @@ function closeQuestion(game: Game) {
   }
 }
 
+/** Sends hosts the shared message and each player the same message plus their own `me`, serialising the shared part once. */
+function broadcastWithMe(game: Game, shared: ServerMessage, me: (p: Player) => object) {
+  const raw = JSON.stringify(shared);
+  toHostsRaw(game, raw);
+  const head = raw.slice(0, -1);
+  for (const p of game.players.values()) sendRaw(p.socket, `${head},"me":${JSON.stringify(me(p))}}`);
+}
+
 function showLeaderboard(game: Game) {
   if (game.phase !== 'reveal' || !game.quiz.rules.showLeaderboard) return;
   clearTimers(game);
   game.phase = 'leaderboard';
-  toHosts(game, leaderboardMsg(game));
-  for (const p of game.players.values()) send(p.socket, leaderboardMsg(game, p));
+  broadcastWithMe(game, leaderboardMsg(game), (p) => ({ rank: rankOf(game, p), score: p.score }));
   if (game.settings.autoAdvance) {
     game.phaseTimer = setTimeout(() => advance(game), AUTO_ADVANCE_MS);
   }
@@ -570,8 +586,7 @@ function finish(game: Game) {
   game.endsAt = null;
   game.pausedRemainingMs = null;
   computeStandings(game);
-  toHosts(game, finalMsg(game));
-  for (const p of game.players.values()) send(p.socket, finalMsg(game, p));
+  broadcastWithMe(game, finalMsg(game), (p) => ({ rank: rankOf(game, p), score: p.score, correctCount: p.correctCount }));
   reportResults(game);
 }
 
@@ -722,11 +737,20 @@ function syncPlayer(game: Game, player: Player) {
 
 // Lobby and live-count updates are batched so a burst of N events costs O(N) sends rather than O(N²).
 function flush() {
+  const now = Date.now();
   for (const game of games.values()) {
-    if (game.lobbyDirty) {
+    // The full player list is O(players) per send, so big games refresh it at most once a second.
+    const lobbyEvery = game.players.size > LARGE_GAME ? LARGE_LOBBY_FLUSH_MS : 0;
+    if (game.lobbyDirty && now - game.lastLobbyFlush >= lobbyEvery) {
       game.lobbyDirty = false;
+      game.lastLobbyFlush = now;
+      game.newlyAnswered = [];
       toHosts(game, { t: 'lobby', locked: game.locked, players: lobbyPlayers(game) });
       if (game.phase === 'lobby') toPlayers(game, { t: 'lobby:count', count: game.players.size });
+    }
+    if (game.newlyAnswered.length) {
+      toHosts(game, { t: 'answered', ids: game.newlyAnswered });
+      game.newlyAnswered = [];
     }
     if (game.progressDirty && game.phase === 'question') {
       game.progressDirty = false;
@@ -802,6 +826,8 @@ function createGame(ws: WebSocket | null, quiz: Quiz = SAMPLE_QUIZ): Game {
     playersByToken: new Map(),
     locked: false,
     lobbyDirty: false,
+    lastLobbyFlush: 0,
+    newlyAnswered: [],
     lastActivity: Date.now(),
     quiz: arrangeQuiz(quiz),
     settings: {
@@ -820,6 +846,7 @@ function createGame(ws: WebSocket | null, quiz: Quiz = SAMPLE_QUIZ): Game {
     recent: [],
     progressDirty: false,
     standings: [],
+    ranks: new Map(),
     closeTimer: null,
     phaseTimer: null,
     report: false,

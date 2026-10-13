@@ -142,10 +142,19 @@ test('full game: scoring, reveal, leaderboard, final and no answer leaks', async
 
   // Asha answers right immediately, Bilal answers wrong, Chen answers right after ~1s.
   mark = a.c.mark();
+  // Let the full player list that follows a new question go out first.
+  await sleep(300);
+  const answeredMark = h.mark();
   a.c.send({ t: 'player:answer', index: 0, choice: 1 });
   await a.c.next('answer:ok', mark);
   b.c.send({ t: 'player:answer', index: 0, choice: 0 });
   await sleep(1000);
+  const answeredIds = h.inbox
+    .slice(answeredMark)
+    .flatMap((m) => (m.t === 'answered' ? m.ids : []))
+    .sort();
+  assert.deepEqual(answeredIds, [a.ready.playerId, b.ready.playerId].sort(), 'hosts hear who answered without the full list');
+  assert.ok(!h.inbox.slice(answeredMark).some((m) => m.t === 'lobby'), 'answers no longer resend the whole player list');
   const hostMark = h.mark();
   c.c.send({ t: 'player:answer', index: 0, choice: 1 });
 
