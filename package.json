@@ -1,0 +1,21 @@
+{
+  "name": "thinkwise",
+  "private": true,
+  "engines": {
+    "node": "22.x"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run db:migrate && concurrently -k -n server,web -c cyan,magenta \"npm run dev -w @thinkwise/server\" \"npm run dev -w @thinkwise/web\"",
+    "db:generate": "npm run db:generate -w @thinkwise/db",
+    "db:migrate": "npm run db:migrate -w @thinkwise/db",
+    "test": "npm test -w @thinkwise/shared && npm test -w @thinkwise/db && npm test -w @thinkwise/server",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
+}

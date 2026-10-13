@@ -1,0 +1,276 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/plus-jakarta-sans';
+@import '@fontsource-variable/space-grotesk';
+@import '@fontsource-variable/noto-sans-devanagari';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans Variable', 'Noto Sans Devanagari Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Space Grotesk Variable', 'Plus Jakarta Sans Variable', 'Noto Sans Devanagari Variable', ui-sans-serif,
+    system-ui, sans-serif;
+
+  --color-nova-50: #f3f0ff;
+  --color-nova-100: #e8e2ff;
+  --color-nova-200: #d3c8ff;
+  --color-nova-300: #b3a0ff;
+  --color-nova-400: #8f6dff;
+  --color-nova-500: #6d4aff;
+  --color-nova-600: #5a2ff2;
+  --color-nova-700: #4a22cc;
+  --color-nova-800: #3b1ea3;
+  --color-nova-900: #2a1773;
+  --color-nova-950: #160b40;
+  --color-coral-400: #ff7a8a;
+  --color-coral-500: #ff5d73;
+  --color-coral-600: #e8425a;
+  --color-sun-500: #ffb627;
+  --color-aqua-400: #3ddbc9;
+  --color-aqua-500: #14c9b8;
+  --color-aqua-600: #0ea595;
+  --color-ink-950: #0c0a1d;
+  --color-ink-900: #14112b;
+  --color-ink-800: #1e1a3d;
+  --color-ink-700: #2c2752;
+  --color-answer-1: #0067a5;
+  --color-answer-2: #c4500b;
+  --color-answer-3: #00806a;
+  --color-answer-4: #9a4a82;
+  --color-answer-5: #8a6400;
+  --color-answer-6: #3d5a99;
+
+  --radius-xl: 0.9rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
+
+  --shadow-glow: 0 0 0 1px #8f6dff2e, 0 20px 70px -22px #6d4affa6;
+  --shadow-lift: 0 4px 8px #14112b14, 0 24px 60px -16px #4a22cc57;
+  --shadow-soft: 0 1px 2px #14112b0a, 0 10px 30px -12px #14112b29;
+
+  --animate-pop: pop 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+  --animate-rise: rise 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-float: float 6s ease-in-out infinite;
+}
+
+:root {
+  --bg: #f7f6fb;
+  --surface: #fff;
+  --surface-2: #f1effa;
+  --border: #e6e3f2;
+  --text: #14112b;
+  --muted: #5d5878;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #0c0a1d;
+  --surface: #15122c;
+  --surface-2: #1d1940;
+  --border: #2c2752;
+  --text: #f2f0ff;
+  --muted: #a7a2c6;
+  color-scheme: dark;
+}
+
+@utility bg-app {
+  background-color: var(--bg);
+}
+@utility bg-surface {
+  background-color: var(--surface);
+}
+@utility bg-surface-2 {
+  background-color: var(--surface-2);
+}
+@utility border-app {
+  border-color: var(--border);
+}
+@utility text-app {
+  color: var(--text);
+}
+@utility text-muted {
+  color: var(--muted);
+}
+
+@utility glass-panel {
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, white 28%);
+  box-shadow: var(--shadow-glow);
+  backdrop-filter: blur(18px) saturate(130%);
+}
+
+@utility arena-grid {
+  background-image:
+    linear-gradient(#8f6dff12 1px, transparent 1px),
+    linear-gradient(90deg, #8f6dff12 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: linear-gradient(#000, transparent 90%);
+}
+
+@utility nova-text {
+  color: transparent;
+  background-image: linear-gradient(100deg, #6d4aff 10%, #ff5d73 55%, #ffb627 95%);
+  background-clip: text;
+}
+
+@utility nova-gradient {
+  background-image:
+    radial-gradient(120% 120% at 0 0, #8f6dff 0%, transparent 55%),
+    radial-gradient(100% 100% at 100% 0, #ff5d73 0%, transparent 50%),
+    radial-gradient(120% 120% at 50% 120%, #14c9b8 0%, transparent 55%),
+    linear-gradient(135deg, #4a22cc, #2a1773);
+}
+
+@utility arena-sheen {
+  isolation: isolate;
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(110deg, transparent 15%, #ffffff1f 45%, transparent 70%);
+    transform: translateX(-120%);
+    animation: arena-sheen 7s ease-in-out infinite;
+  }
+}
+
+@utility sr-only-focusable {
+  &:not(:focus) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+}
+
+.low-data .decorative {
+  display: none;
+}
+
+.low-data *,
+.low-data *::before,
+.low-data *::after {
+  animation: none !important;
+  backdrop-filter: none !important;
+}
+
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    background-image:
+      radial-gradient(circle at 8% -10%, #6d4aff1c, transparent 28rem),
+      radial-gradient(circle at 95% 5%, #14c9b814, transparent 24rem);
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(circle at 8% -10%, #6d4aff38, transparent 32rem),
+      radial-gradient(circle at 95% 5%, #14c9b81a, transparent 28rem);
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes arena-sheen {
+  0%,
+  65% {
+    transform: translateX(-120%);
+  }
+  90%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes tw-fall {
+  0% {
+    transform: translateY(-5vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(720deg);
+    opacity: 0.9;
+  }
+}
+
+@keyframes tw-flight {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.9);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translateY(-40px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-70px);
+  }
+}
+
+.flight {
+  animation: tw-flight 2.2s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

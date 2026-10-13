@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: thinkwise-realtime
+    runtime: node
+    plan: free
+    buildCommand: npm ci --workspace @thinkwise/server --workspace @thinkwise/shared
+    startCommand: npm run start -w @thinkwise/server
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      # The website's address, e.g. https://thinkwise.vercel.app
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # https://<website>/api/internal/game-results
+      - key: RESULTS_URL
+        sync: false
+      # Same value as REALTIME_SECRET on Vercel.
+      - key: REALTIME_SECRET
+        sync: false
