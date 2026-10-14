@@ -957,7 +957,7 @@ function PlayFlow() {
         Skip to content
       </a>
       <div className="decorative arena-grid pointer-events-none absolute inset-0 -z-10" aria-hidden="true" />
-      <ConnectionBadge status={status} quietConnect />
+      <ConnectionBadge status={status} />
 
       <header className="glass-panel m-3 flex items-center justify-between gap-2 rounded-2xl px-3 py-3 sm:px-4">
         <Link href="/" aria-label="ThinkWise home" className="shrink-0">
