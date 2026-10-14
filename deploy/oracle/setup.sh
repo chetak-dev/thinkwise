@@ -13,7 +13,7 @@ APP_DIR="/opt/thinkwise"
 APP_USER="thinkwise"
 ENV_DIR="/etc/thinkwise"
 ENV_FILE="$ENV_DIR/realtime.env"
-DEFAULT_ORIGINS="https://quiz.iskconbrahmapur.org,https://thinkwise-ecru.vercel.app"
+DEFAULT_ORIGINS="https://thinkwise.iskconbrahmapur.org,https://thinkwise-ecru.vercel.app"
 DEFAULT_RESULTS="https://thinkwise-ecru.vercel.app/api/internal/game-results"
 
 echo "== ThinkWise game server setup =="
