@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState, type FormEvent } from 'react';
+import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { ArrowDown, ArrowUp, Check, Feather, Lightbulb, Loader2, Volume2, VolumeX } from 'lucide-react';
@@ -15,7 +15,9 @@ import {
   isScored,
   parseNumberAnswer,
   type AnswerKey,
+  type AnswerProblem,
   type Avatar,
+  type FeedbackAnswers,
   type GameMode,
   type PlayerAnswer,
   type PublicQuestion,
@@ -43,8 +45,9 @@ import { DEFAULT_RULES } from '@/lib/stage';
 import { usePrefs, type Lang } from '@/lib/prefs';
 import { LANGUAGES, STRINGS, type Strings } from '@/lib/i18n';
 import { playSfx, setSoundEnabled, useAudioPlaying, useSound } from '@/lib/audio';
+import { EventFeedbackForm, type PlayEventForm } from '@/components/play/EventFeedbackForm';
 
-type Step = 'pin' | 'checking' | 'profile' | 'lobby' | 'question' | 'result' | 'leaderboard' | 'final' | 'kicked';
+type Step = 'pin' | 'checking' | 'profile' | 'feedback' | 'lobby' | 'question' | 'result' | 'leaderboard' | 'final' | 'kicked';
 
 interface Me {
   id: string;
@@ -57,6 +60,28 @@ type Final = Extract<ServerMessage, { t: 'final' }>;
 type AnswerInput = { choice: number } | { choices: number[] } | { text: string } | { number: number } | { blanks: string[] };
 
 const tokenKey = (pin: string) => `tw-player-${pin}`;
+const feedbackDoneKey = (pin: string) => `tw-feedback-done-${pin}`;
+
+/** Stable per PIN, so a retried submit isn't stored twice. randomUUID needs HTTPS, hence the fallback. */
+function feedbackClientId(pin: string) {
+  const key = `tw-feedback-id-${pin}`;
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+async function loadEventForm(pin: string): Promise<PlayEventForm | null> {
+  try {
+    const res = await fetch(`/api/play/event?pin=${pin}`, { cache: 'no-store' });
+    return res.ok ? ((await res.json()) as { event: PlayEventForm | null }).event : null;
+  } catch {
+    // Without the form the player can still join the game.
+    return null;
+  }
+}
 
 const SUBMIT_CLASS =
   'flex h-14 w-full items-center justify-center rounded-2xl bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] text-lg font-bold text-white shadow-lift transition hover:brightness-110 disabled:opacity-50';
@@ -720,12 +745,14 @@ function PlayFlow() {
   const [rules, setRules] = useState<PublicRules>(DEFAULT_RULES);
   const [mode, setMode] = useState<GameMode>('live');
   const [track, setTrack] = useState<TrackId | null>(null);
+  const [eventForm, setEventForm] = useState<PlayEventForm | null>(null);
+  const eventFormLoad = useRef<Promise<PlayEventForm | null>>(Promise.resolve(null));
 
   useEffect(() => {
     setAvatar(AVATARS[Math.floor(Math.random() * AVATARS.length)]!);
   }, []);
 
-  const inGame = step !== 'pin' && step !== 'checking' && step !== 'profile';
+  const inGame = step !== 'pin' && step !== 'checking' && step !== 'profile' && step !== 'feedback';
   useSound(
     prefs.sound,
     track,
@@ -758,6 +785,7 @@ function PlayFlow() {
         case 'pin:ok':
           setPin(msg.pin);
           setError(null);
+          eventFormLoad.current = loadEventForm(msg.pin);
           setStep('profile');
           break;
         case 'player:ready':
@@ -826,7 +854,8 @@ function PlayFlow() {
           } else if (step === 'checking' || step === 'pin') {
             setStep('pin');
             setError(msg.message);
-          } else if (step === 'profile') {
+          } else if (step === 'profile' || step === 'feedback') {
+            setStep('profile');
             setError(msg.message);
           } else {
             // Mid-game errors (e.g. rate limiting) must not throw the player out of the game.
@@ -849,12 +878,42 @@ function PlayFlow() {
     send({ t: 'pin:check', pin: clean });
   };
 
-  const submitProfile = (e: FormEvent) => {
-    e.preventDefault();
-    const name = nickname.trim();
-    if (!pin || !name) return;
+  const join = () => {
+    if (!pin) return;
     setError(null);
-    send({ t: 'player:join', pin, nickname: name, avatar });
+    send({ t: 'player:join', pin, nickname: nickname.trim(), avatar });
+  };
+
+  const submitProfile = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!pin || !nickname.trim()) return;
+    const event = await eventFormLoad.current;
+    if (event && !localStorage.getItem(feedbackDoneKey(pin))) {
+      setEventForm(event);
+      setStep('feedback');
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    join();
+  };
+
+  const sendFeedback = async (answers: FeedbackAnswers): Promise<'ok' | 'failed' | Record<string, AnswerProblem>> => {
+    if (!pin) return 'failed';
+    try {
+      const res = await fetch('/api/play/feedback', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pin, clientId: feedbackClientId(pin), nickname: nickname.trim(), answers }),
+      });
+      if (res.status === 422) return ((await res.json()) as { problems: Record<string, AnswerProblem> }).problems;
+      // 404: the game has ended or isn't an event any more, so there's nothing to hold the player back for.
+      if (!res.ok && res.status !== 404) return 'failed';
+    } catch {
+      return 'failed';
+    }
+    localStorage.setItem(feedbackDoneKey(pin), '1');
+    join();
+    return 'ok';
   };
 
   const submitAnswer = (answer: AnswerInput) => {
@@ -1016,6 +1075,16 @@ function PlayFlow() {
               </p>
             </form>
           </div>
+        )}
+
+        {step === 'feedback' && eventForm && (
+          <EventFeedbackForm
+            event={eventForm}
+            name={nickname.trim()}
+            t={t}
+            onSubmit={sendFeedback}
+            onSkip={eventForm.required ? undefined : join}
+          />
         )}
 
         {inGame && step !== 'kicked' && me && (

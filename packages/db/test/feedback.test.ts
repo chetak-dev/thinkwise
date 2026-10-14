@@ -11,6 +11,8 @@ const auth = await import('../src/auth');
 const f = await import('../src/feedback');
 const quizzes = await import('../src/quizzes');
 const sessions = await import('../src/sessions');
+const ef = await import('../src/eventFeedback');
+const schema = await import('../src/schema');
 
 const handle = openDb();
 const db = handle.db;
@@ -124,4 +126,36 @@ test('events pair an owned quiz with owned forms and collect their launches', as
   const listed = await f.listFeedbackEvents(db, alice.id);
   assert.equal(listed.find((e) => e.id === made.id)?.launches, 1);
   assert.equal(await f.getFeedbackEvent(db, bob.id, made.id), null, 'events are private to their owner');
+
+  const live = await ef.getLiveEventForm(db, '123456');
+  assert.equal(live?.eventId, made.id);
+  const rateId = live!.form.fields[0]!.id;
+  assert.equal(await ef.getLiveEventForm(db, '999999'), null);
+
+  const submit = (clientId: string, answers: unknown, nickname = 'Asha') =>
+    ef.submitEventFeedback(db, { pin: '123456', clientId, nickname, answers });
+  assert.deepEqual(await submit('client-0001', {}), { ok: false, error: 'invalid', problems: { [rateId]: 'required' } });
+  assert.deepEqual(await submit('bad id!', { [rateId]: 4 }), { ok: false, error: 'bad_request' });
+  assert.deepEqual(await submit('client-0001', { [rateId]: 4 }), { ok: true });
+  assert.deepEqual(await submit('client-0001', { [rateId]: 2 }), { ok: true }, 'a retried submit is accepted');
+  assert.deepEqual(await submit('client-0002', { [rateId]: 5 }, 'Ravi'), { ok: true });
+  assert.deepEqual(await ef.countEventFeedback(db, alice.id, made.id), { total: 2, bySession: { '00000000-0000-4000-8000-0000000000e1': 2 } });
+  assert.equal((await ef.countEventFeedback(db, bob.id, made.id)).total, 0);
+
+  const exported = await ef.getEventFeedbackExport(db, alice.id, made.id);
+  assert.deepEqual(
+    exported?.submissions.map((s) => [s.nickname, s.answers[rateId]]),
+    [
+      ['Asha', 4],
+      ['Ravi', 5],
+    ],
+    'the first submit wins',
+  );
+  assert.equal(await ef.getEventFeedbackExport(db, bob.id, made.id), null);
+
+  await sessions.createGameSession(db, alice, { gameId: '00000000-0000-4000-8000-0000000000e2', pin: '123456', quizId, title: 'Plain', questionCount: 1 });
+  assert.equal(await ef.getLiveEventForm(db, '123456'), null, 'a newer plain game with a reused PIN asks for no feedback');
+
+  await db.update(schema.gameSessions).set({ status: 'ended' });
+  assert.equal(await ef.getLiveEventForm(db, '123456'), null, 'only running games take feedback');
 });

@@ -15,7 +15,7 @@ export function PageLoader({ fullScreen = false }: { fullScreen?: boolean }) {
         />
         <span aria-hidden="true" className="absolute inset-0 rounded-full ring-4 ring-inset ring-nova-500/10" />
         <span className="absolute inset-[18px] grid animate-breathe place-items-center">
-          <LogoMark className="size-11 rounded-xl shadow-[0_10px_30px_-8px_rgba(109,74,255,.6)]" />
+          <LogoMark className="size-11 drop-shadow-[0_8px_18px_rgba(91,52,240,.45)]" />
         </span>
       </div>
       <p className="flex items-center gap-1.5 font-display text-sm font-semibold tracking-wide text-muted">

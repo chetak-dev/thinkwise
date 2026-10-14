@@ -1,19 +1,38 @@
-export function LogoMark({ className = 'size-8 rounded-[9px]' }: { className?: string }) {
+import { useId } from 'react';
+
+/** A "T" whose stem doubles as an exclamation mark: the moment an answer clicks. */
+export function LogoMark({ className = 'size-8' }: { className?: string }) {
+  const id = useId();
   return (
-    <span className={`inline-flex shrink-0 items-center justify-center bg-[linear-gradient(135deg,#6d4aff,#14c9b8)] ${className}`}>
-      <svg viewBox="0 0 32 32" className="size-full" aria-hidden="true">
-        <path d="M10 11h12M16 11v11" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" />
-        <circle cx="22.5" cy="21.5" r="2.2" fill="#fff" opacity="0.9" />
-      </svg>
-    </span>
+    <svg viewBox="0 0 32 32" className={`shrink-0 ${className}`} aria-hidden="true">
+      <defs>
+        <linearGradient id={`${id}-bg`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#8466ff" />
+          <stop offset="0.55" stopColor="#5b34f0" />
+          <stop offset="1" stopColor="#3a1aa8" />
+        </linearGradient>
+        <radialGradient id={`${id}-shine`} cx="0.25" cy="0.15" r="0.75">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.32" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <rect width="32" height="32" rx="9" fill={`url(#${id}-bg)`} />
+      <rect width="32" height="32" rx="9" fill={`url(#${id}-shine)`} />
+      <rect x="0.5" y="0.5" width="31" height="31" rx="8.5" fill="none" stroke="#fff" strokeOpacity="0.18" />
+      <path d="M9.5 9.5h13M16 9.5v9.2" stroke="#fff" strokeWidth="3.6" strokeLinecap="round" />
+      <circle cx="16" cy="23.6" r="2.3" fill="#5eead4" />
+    </svg>
   );
 }
 
 export function Logo({ className = '', textClassName = '' }: { className?: string; textClassName?: string }) {
   return (
-    <span className={`inline-flex items-center gap-2 font-display text-xl font-bold tracking-tight ${className}`}>
-      <LogoMark />
-      <span className={textClassName}>ThinkWise</span>
+    <span className={`inline-flex items-center gap-2.5 font-display text-xl tracking-tight ${className}`}>
+      <LogoMark className="size-[1.6em]" />
+      <span className={textClassName}>
+        <span className="font-bold">Think</span>
+        <span className="font-medium opacity-75">Wise</span>
+      </span>
     </span>
   );
 }

@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 export const organisations = pgTable('organisations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -185,4 +185,32 @@ export const sessionPlayers = pgTable(
     answers: jsonb('answers').notNull().default([]),
   },
   (t) => [index('session_players_session_idx').on(t.sessionId)],
+);
+
+/** One participant's answers to an event's feedback form in one launch. */
+export const feedbackSubmissions = pgTable(
+  'feedback_submissions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => feedbackEvents.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => gameSessions.id, { onDelete: 'cascade' }),
+    formId: uuid('form_id').references(() => feedbackForms.id, { onDelete: 'set null' }),
+    formVersion: integer('form_version').notNull(),
+    stage: text('stage', { enum: ['before', 'after'] }).notNull(),
+    /** Random id from the participant's browser, so a retried submit is stored once. */
+    clientId: text('client_id').notNull(),
+    /** Null when the event collects anonymous feedback. */
+    nickname: text('nickname'),
+    /** { [fieldId]: answer } for the visible fields only. */
+    answers: jsonb('answers').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('feedback_submissions_once_idx').on(t.sessionId, t.stage, t.clientId),
+    index('feedback_submissions_event_idx').on(t.eventId),
+  ],
 );

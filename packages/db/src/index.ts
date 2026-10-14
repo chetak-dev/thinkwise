@@ -4,3 +4,4 @@ export * from './auth';
 export * from './quizzes';
 export * from './sessions';
 export * from './feedback';
+export * from './eventFeedback';

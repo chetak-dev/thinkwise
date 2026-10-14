@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { toCsv } from './csv';
 
 export const FIELD_TYPES = [
   'short_text',
@@ -178,3 +179,204 @@ export const FeedbackEventInput = z
     feedbackRequired: e.flow === 'before' || e.flow === 'after' || e.flow === 'both' ? e.feedbackRequired : false,
   }));
 export type FeedbackEventInput = z.input<typeof FeedbackEventInput>;
+
+export type FeedbackAnswer = string | number | boolean | string[] | Record<string, string>;
+export type FeedbackAnswers = Record<string, FeedbackAnswer>;
+export type AnswerProblem = 'required' | 'invalid';
+
+/** Lowest and highest value of the number-button field types. */
+export const SCALE_RANGE = { rating: [1, 5], stars: [1, 5], scale: [1, 10] } as const satisfies Partial<Record<FieldType, readonly [number, number]>>;
+export const TEXT_ANSWER_MAX = { short_text: 300, long_text: 3000 } as const;
+const NUMBER_LIMIT = 1e12;
+
+/** Uploads arrive in a later step, so for now participants only answer the other types. */
+export function collectsAnswer(type: FieldType) {
+  return type !== 'heading' && !isUpload(type);
+}
+
+function labelOf(list: FormField['choices'], id: string) {
+  return list.find((c) => c.id === id)?.label ?? '';
+}
+
+/** Human-readable answer, used by conditions and spreadsheets. */
+export function answerText(field: FormField, value: FeedbackAnswer | undefined): string {
+  if (value === undefined || value === null) return '';
+  switch (field.type) {
+    case 'single':
+    case 'dropdown':
+      return typeof value === 'string' ? labelOf(field.choices, value) : '';
+    case 'checkboxes':
+      return Array.isArray(value) ? value.map((id) => labelOf(field.choices, id)).join('; ') : '';
+    case 'ranking':
+      return Array.isArray(value) ? value.map((id) => labelOf(field.choices, id)).join(' > ') : '';
+    case 'matrix':
+      return typeof value === 'object' && !Array.isArray(value)
+        ? field.rows
+            .filter((r) => value[r.id])
+            .map((r) => `${r.label}: ${labelOf(field.choices, value[r.id]!)}`)
+            .join('; ')
+        : '';
+    case 'yes_no':
+      return value === 'yes' ? 'Yes' : value === 'no' ? 'No' : '';
+    case 'consent':
+      return value === true ? 'Agreed' : '';
+    default:
+      return String(value);
+  }
+}
+
+function conditionMet(field: FormField, answers: FeedbackAnswers, byId: Map<string, FormField>, depth: number): boolean {
+  const cond = field.condition;
+  if (!cond) return true;
+  const source = byId.get(cond.fieldId);
+  // A condition on a deleted question no longer applies.
+  if (!source) return true;
+  if (depth > MAX_FIELDS || !conditionMet(source, answers, byId, depth + 1)) return false;
+  const value = answers[source.id];
+  const target = cond.value.trim().toLocaleLowerCase();
+  const parts =
+    source.type === 'checkboxes' && Array.isArray(value)
+      ? value.map((id) => labelOf(source.choices, id).trim().toLocaleLowerCase())
+      : [answerText(source, value).trim().toLocaleLowerCase()];
+  if (cond.op === 'contains') return parts.some((p) => p.includes(target));
+  const equal = parts.some((p) => p === target);
+  return cond.op === 'equals' ? equal : !equal;
+}
+
+/** The fields a participant sees, given what they've answered so far. */
+export function visibleFields(fields: FormField[], answers: FeedbackAnswers) {
+  const byId = new Map(fields.map((f) => [f.id, f]));
+  return fields.filter((f) => conditionMet(f, answers, byId, 0));
+}
+
+function isEmpty(value: unknown) {
+  if (value === undefined || value === null || value === '' || value === false) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  return typeof value === 'object' && Object.keys(value).length === 0;
+}
+
+function cleanAnswer(field: FormField, raw: unknown): FeedbackAnswer | undefined | 'invalid' {
+  if (isEmpty(raw)) return undefined;
+  const choiceIds = new Set(field.choices.map((c) => c.id));
+  const str = typeof raw === 'string' ? raw.trim() : null;
+  switch (field.type) {
+    case 'short_text':
+    case 'long_text':
+      if (str === null) return 'invalid';
+      if (!str) return undefined;
+      return str.length <= TEXT_ANSWER_MAX[field.type] ? str : 'invalid';
+    case 'email':
+      return str && str.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str) ? str : 'invalid';
+    case 'phone':
+      return str && /^\+?[0-9][0-9 ()-]{4,19}$/.test(str) ? str : 'invalid';
+    case 'number': {
+      const n = typeof raw === 'number' ? raw : str ? Number(str) : NaN;
+      return Number.isFinite(n) && Math.abs(n) <= NUMBER_LIMIT ? n : 'invalid';
+    }
+    case 'date':
+      return str && /^\d{4}-\d{2}-\d{2}$/.test(str) && !Number.isNaN(Date.parse(str)) ? str : 'invalid';
+    case 'datetime':
+      return str && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(str) && !Number.isNaN(Date.parse(str)) ? str : 'invalid';
+    case 'rating':
+    case 'stars':
+    case 'scale': {
+      const [min, max] = SCALE_RANGE[field.type];
+      return typeof raw === 'number' && Number.isInteger(raw) && raw >= min && raw <= max ? raw : 'invalid';
+    }
+    case 'yes_no':
+      return raw === 'yes' || raw === 'no' ? raw : 'invalid';
+    case 'consent':
+      return raw === true ? true : 'invalid';
+    case 'single':
+    case 'dropdown':
+      return str && choiceIds.has(str) ? str : 'invalid';
+    case 'checkboxes':
+      return Array.isArray(raw) && raw.every((id) => typeof id === 'string' && choiceIds.has(id)) && new Set(raw).size === raw.length
+        ? (raw as string[])
+        : 'invalid';
+    case 'ranking':
+      return Array.isArray(raw) && raw.length === choiceIds.size && new Set(raw).size === raw.length && raw.every((id) => choiceIds.has(id as string))
+        ? (raw as string[])
+        : 'invalid';
+    case 'matrix': {
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return 'invalid';
+      const rowIds = new Set(field.rows.map((r) => r.id));
+      const entries = Object.entries(raw);
+      if (!entries.every(([row, col]) => rowIds.has(row) && typeof col === 'string' && choiceIds.has(col))) return 'invalid';
+      if (field.required && entries.length < rowIds.size) return 'invalid';
+      return Object.fromEntries(entries) as Record<string, string>;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** Checks a participant's answers against the form. Hidden questions are dropped. */
+export function checkFeedback(
+  fields: FormField[],
+  raw: unknown,
+): { ok: true; answers: FeedbackAnswers } | { ok: false; problems: Record<string, AnswerProblem> } {
+  const input = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const cleaned: FeedbackAnswers = {};
+  const invalid = new Set<string>();
+  for (const field of fields) {
+    if (!collectsAnswer(field.type)) continue;
+    const value = cleanAnswer(field, input[field.id]);
+    if (value === 'invalid') invalid.add(field.id);
+    else if (value !== undefined) cleaned[field.id] = value;
+  }
+  const answers: FeedbackAnswers = {};
+  const problems: Record<string, AnswerProblem> = {};
+  for (const field of visibleFields(fields, cleaned)) {
+    if (!collectsAnswer(field.type)) continue;
+    if (invalid.has(field.id)) problems[field.id] = 'invalid';
+    else if (cleaned[field.id] !== undefined) answers[field.id] = cleaned[field.id]!;
+    else if (field.required) problems[field.id] = 'required';
+  }
+  return Object.keys(problems).length ? { ok: false, problems } : { ok: true, answers };
+}
+
+export interface EventCsvInput {
+  identity: EventIdentity;
+  fields: FormField[];
+  sessions: { id: string; label: string }[];
+  players: { sessionId: string; nickname: string; score: number; rank: number; correctCount: number }[];
+  submissions: { sessionId: string; nickname: string | null; submittedAt: string; answers: FeedbackAnswers }[];
+}
+
+/** One row per participant: quiz results (when the event links them) beside their feedback. */
+export function eventFeedbackCsv({ identity, fields, sessions, players, submissions }: EventCsvInput): string {
+  const columns = fields.filter((f) => collectsAnswer(f.type));
+  const header = [
+    'Session',
+    'Name',
+    'Quiz rank',
+    'Quiz score',
+    'Correct answers',
+    'Gave feedback',
+    'Feedback submitted at',
+    ...columns.map((f) => {
+      const label = f.label.trim() || 'Untitled question';
+      return f.type in SCALE_RANGE ? `${label} (${SCALE_RANGE[f.type as keyof typeof SCALE_RANGE].join('–')})` : label;
+    }),
+  ];
+  const feedbackCells = (s?: EventCsvInput['submissions'][number]) =>
+    s ? ['Yes', s.submittedAt, ...columns.map((f) => answerText(f, s.answers[f.id]))] : ['No', '', ...columns.map(() => '')];
+  const rows: (string | number)[][] = [];
+  for (const session of sessions) {
+    const own = submissions.filter((s) => s.sessionId === session.id);
+    if (identity !== 'identified') {
+      for (const s of own) rows.push([session.label, identity === 'anonymous' ? '' : (s.nickname ?? ''), '', '', '', ...feedbackCells(s)]);
+      continue;
+    }
+    const unmatched = [...own];
+    for (const p of players.filter((x) => x.sessionId === session.id)) {
+      const at = unmatched.findIndex((s) => s.nickname?.toLocaleLowerCase() === p.nickname.toLocaleLowerCase());
+      const s = at >= 0 ? unmatched.splice(at, 1)[0] : undefined;
+      rows.push([session.label, p.nickname, p.rank, p.score, p.correctCount, ...feedbackCells(s)]);
+    }
+    // Feedback from people who left before the results were saved, or a game still running.
+    for (const s of unmatched) rows.push([session.label, s.nickname ?? '', '', '', '', ...feedbackCells(s)]);
+  }
+  return toCsv([header, ...rows]);
+}

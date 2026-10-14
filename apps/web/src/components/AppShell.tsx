@@ -70,7 +70,7 @@ function SidebarContent({
       </Link>
 
       <div className="space-y-2">
-        <form action={createQuizAction} onSubmit={onNavigate} data-navigates>
+        <form action={createQuizAction} onSubmit={onNavigate}>
           <button
             type="submit"
             aria-label={rail ? 'New quiz' : undefined}
@@ -260,7 +260,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
         description="You’ll need to sign in again to edit quizzes or host a game."
         size="max-w-sm"
       >
-        <form action={logoutAction} className="flex justify-end gap-2" data-navigates>
+        <form action={logoutAction} className="flex justify-end gap-2">
           <button
             type="button"
             onClick={() => setSignOutOpen(false)}

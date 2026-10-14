@@ -64,6 +64,13 @@
       "when": 1791960537805,
       "tag": "0008_rare_rumiko_fujikawa",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791962203501,
+      "tag": "0009_complex_boomerang",
+      "breakpoints": true
     }
   ]
 }

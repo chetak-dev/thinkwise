@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, ArrowRight, ClipboardList, DoorOpen, Fingerprint, ListChecks, QrCode, Rocket, Users } from 'lucide-react';
-import { getDb, getFeedbackEvent, listEventSessions } from '@thinkwise/db';
+import { ArrowLeft, ArrowRight, ClipboardList, DoorOpen, Download, Fingerprint, ListChecks, MessageSquareText, QrCode, Rocket, Users } from 'lucide-react';
+import { countEventFeedback, getDb, getFeedbackEvent, listEventSessions } from '@thinkwise/db';
 import { EVENT_FLOW_INFO, EVENT_IDENTITY_INFO } from '@thinkwise/shared';
 import { requireUser } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
@@ -18,7 +18,12 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const user = await requireUser(`/feedback/events/${id}`);
   const db = getDb();
-  const [event, sessions, timeZone] = await Promise.all([getFeedbackEvent(db, user.id, id), listEventSessions(db, user.id, id), getTimeZone()]);
+  const [event, sessions, feedback, timeZone] = await Promise.all([
+    getFeedbackEvent(db, user.id, id),
+    listEventSessions(db, user.id, id),
+    countEventFeedback(db, user.id, id),
+    getTimeZone(),
+  ]);
   if (!event) notFound();
 
   const hasFeedback = event.flow !== 'quiz_only';
@@ -47,6 +52,12 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
       value: event.flow === 'quiz_only' ? 'Quiz only' : event.feedbackRequired ? 'Feedback required' : 'Feedback optional',
       detail: event.allowLateEntry ? 'Late entry allowed' : 'No joining once the quiz starts',
     },
+    {
+      Icon: MessageSquareText,
+      label: 'Responses',
+      value: plural(feedback.total, 'response', 'responses'),
+      detail: sessions.length ? `Across ${plural(sessions.length, 'launch', 'launches')}` : 'Launch the lobby to start collecting',
+    },
   ];
 
   return (
@@ -64,10 +75,21 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
           <h1 className="mt-2 break-words font-display text-3xl font-bold">{event.title}</h1>
           <p className="mt-1 text-muted">{event.description || 'Feedback and a live quiz, joined into one experience.'}</p>
         </div>
-        <LaunchEventButton eventId={event.id} disabled={!event.quiz} />
+        <div className="flex flex-wrap items-start gap-2">
+          {hasFeedback && (
+            <a
+              href={`/api/feedback/events/${event.id}/export`}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-app bg-surface px-4 text-sm font-semibold transition hover:-translate-y-0.5 hover:border-nova-400"
+            >
+              <Download className="size-4" aria-hidden="true" />
+              Export CSV
+            </a>
+          )}
+          <LaunchEventButton eventId={event.id} disabled={!event.quiz} />
+        </div>
       </div>
 
-      <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {stats.map(({ Icon, label, value, detail }) => (
           <li key={label} className="rounded-2xl border border-app bg-surface p-5 shadow-soft">
             <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[.14em] text-muted">
@@ -102,6 +124,12 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
                     <Users className="size-4" aria-hidden="true" />
                     {plural(s.playerCount, 'player', 'players')}
                   </span>
+                  {hasFeedback && (
+                    <span className="flex items-center gap-1 text-sm text-muted">
+                      <MessageSquareText className="size-4" aria-hidden="true" />
+                      {plural(feedback.bySession[s.id] ?? 0, 'response', 'responses')}
+                    </span>
+                  )}
                   <StatusBadge status={s.status} />
                   <span className="ml-auto flex items-center gap-1 text-sm font-semibold text-nova-700 dark:text-nova-300">
                     Report
