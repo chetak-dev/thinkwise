@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ClipboardList, Plus, Sparkles } from 'lucide-react';
-import { getDb, listFeedbackForms } from '@thinkwise/db';
+import { ArrowRight, ClipboardList, Plus, Rocket, Sparkles } from 'lucide-react';
+import { getDb, listFeedbackEvents, listFeedbackForms } from '@thinkwise/db';
+import { EVENT_FLOW_INFO } from '@thinkwise/shared';
 import { requireUser } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDate } from '@/lib/time';
@@ -14,7 +15,8 @@ const BUTTON =
 
 export default async function FeedbackPage() {
   const user = await requireUser('/feedback');
-  const [forms, timeZone] = await Promise.all([listFeedbackForms(getDb(), user.id), getTimeZone()]);
+  const db = getDb();
+  const [events, forms, timeZone] = await Promise.all([listFeedbackEvents(db, user.id), listFeedbackForms(db, user.id), getTimeZone()]);
 
   return (
     <div className="space-y-10">
@@ -27,14 +29,13 @@ export default async function FeedbackPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <span
-            aria-disabled="true"
-            title="Coming in the next step"
-            className={`${BUTTON} cursor-not-allowed bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] text-white opacity-50 hover:translate-y-0`}
+          <Link
+            href="/feedback/new"
+            className={`${BUTTON} bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] text-white shadow-lift hover:brightness-110`}
           >
             <Sparkles className="size-4" aria-hidden="true" />
             Create complete event
-          </span>
+          </Link>
           <form action={createFeedbackFormAction} data-navigates>
             <button type="submit" className={`${BUTTON} border border-app bg-surface hover:border-nova-400 hover:text-nova-700 dark:hover:text-nova-300`}>
               <Plus className="size-4" aria-hidden="true" />
@@ -49,13 +50,39 @@ export default async function FeedbackPage() {
           <h2 className="font-display text-xl font-bold">Interactive events</h2>
           <p className="text-sm text-muted">Feedback and a quiz, joined into one participant journey.</p>
         </div>
-        <div className="flex flex-col items-center rounded-3xl border border-dashed border-app bg-surface px-6 py-12 text-center">
-          <span className="flex size-14 items-center justify-center rounded-2xl bg-nova-100 text-nova-700 dark:bg-nova-900/60 dark:text-nova-200">
-            <Sparkles className="size-7" aria-hidden="true" />
-          </span>
-          <h3 className="mt-4 font-display text-lg font-bold">Your first event will appear here</h3>
-          <p className="mt-1 max-w-md text-sm text-muted">Build a feedback form below, then pair it with any quiz so participants move through both with one link.</p>
-        </div>
+        {events.length === 0 ? (
+          <div className="flex flex-col items-center rounded-3xl border border-dashed border-app bg-surface px-6 py-12 text-center">
+            <span className="flex size-14 items-center justify-center rounded-2xl bg-nova-100 text-nova-700 dark:bg-nova-900/60 dark:text-nova-200">
+              <Sparkles className="size-7" aria-hidden="true" />
+            </span>
+            <h3 className="mt-4 font-display text-lg font-bold">Your first event will appear here</h3>
+            <p className="mt-1 max-w-md text-sm text-muted">Build a feedback form below, then pair it with any quiz so participants move through both with one link.</p>
+          </div>
+        ) : (
+          <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {events.map((event) => (
+              <li key={event.id}>
+                <Link
+                  href={`/feedback/events/${event.id}`}
+                  className="flex h-full flex-col rounded-2xl border border-app bg-surface p-5 shadow-soft transition hover:-translate-y-0.5 hover:border-nova-300"
+                >
+                  <span className="self-start rounded-full bg-coral-500/10 px-2.5 py-0.5 text-xs font-bold text-coral-600 dark:text-coral-400">
+                    {EVENT_FLOW_INFO[event.flow].badge}
+                  </span>
+                  <h3 className="mt-3 truncate font-display text-lg font-bold">{event.title}</h3>
+                  <p className="mt-1 truncate text-sm text-muted">{event.quizTitle ? `Quiz: ${event.quizTitle}` : 'Quiz deleted'}</p>
+                  <p className="mt-auto flex items-center justify-between pt-4 text-sm font-semibold text-nova-700 dark:text-nova-300">
+                    <span className="flex items-center gap-1.5">
+                      <Rocket className="size-4" aria-hidden="true" />
+                      {event.launches === 0 ? 'Ready to launch' : `${event.launches} ${event.launches === 1 ? 'launch' : 'launches'}`}
+                    </span>
+                    <ArrowRight className="size-4" aria-hidden="true" />
+                  </p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="space-y-3">

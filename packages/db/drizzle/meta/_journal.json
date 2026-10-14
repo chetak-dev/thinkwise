@@ -57,6 +57,13 @@
       "when": 1791957924369,
       "tag": "0007_broken_scarecrow",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791960537805,
+      "tag": "0008_rare_rumiko_fujikawa",
+      "breakpoints": true
     }
   ]
 }

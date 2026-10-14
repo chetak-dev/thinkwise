@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 export const organisations = pgTable('organisations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -100,6 +100,30 @@ export const feedbackForms = pgTable(
   (t) => [index('feedback_forms_owner_updated_idx').on(t.ownerId, t.updatedAt)],
 );
 
+/** A quiz paired with feedback form(s) into one participant journey. */
+export const feedbackEvents = pgTable(
+  'feedback_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    orgId: uuid('org_id').references(() => organisations.id, { onDelete: 'set null' }),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    quizId: uuid('quiz_id').references(() => quizzes.id, { onDelete: 'set null' }),
+    formId: uuid('form_id').references(() => feedbackForms.id, { onDelete: 'set null' }),
+    afterFormId: uuid('after_form_id').references(() => feedbackForms.id, { onDelete: 'set null' }),
+    flow: text('flow', { enum: ['before', 'after', 'both', 'optional', 'quiz_only'] }).notNull(),
+    identity: text('identity', { enum: ['identified', 'partial', 'anonymous'] }).notNull(),
+    feedbackRequired: boolean('feedback_required').notNull().default(true),
+    allowLateEntry: boolean('allow_late_entry').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('feedback_events_owner_updated_idx').on(t.ownerId, t.updatedAt)],
+);
+
 export const favourites = pgTable(
   'favourites',
   {
@@ -124,6 +148,7 @@ export const gameSessions = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     orgId: uuid('org_id').references(() => organisations.id, { onDelete: 'set null' }),
     quizId: uuid('quiz_id').references(() => quizzes.id, { onDelete: 'set null' }),
+    eventId: uuid('event_id').references(() => feedbackEvents.id, { onDelete: 'set null' }),
     title: text('title').notNull(),
     pin: text('pin').notNull(),
     mode: text('mode', { enum: ['live', 'self'] }).notNull().default('live'),
@@ -137,7 +162,11 @@ export const gameSessions = pgTable(
     endedAt: timestamp('ended_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('game_sessions_host_created_idx').on(t.hostId, t.createdAt), index('game_sessions_quiz_idx').on(t.quizId)],
+  (t) => [
+    index('game_sessions_host_created_idx').on(t.hostId, t.createdAt),
+    index('game_sessions_quiz_idx').on(t.quizId),
+    index('game_sessions_event_idx').on(t.eventId),
+  ],
 );
 
 export const sessionPlayers = pgTable(

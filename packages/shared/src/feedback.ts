@@ -128,3 +128,53 @@ export function newField(type: FieldType, id: string, makeId: () => string = () 
     condition: null,
   };
 }
+
+/** Where the feedback step sits in an event's participant journey. */
+export const EVENT_FLOWS = ['before', 'after', 'both', 'optional', 'quiz_only'] as const;
+export type EventFlow = (typeof EVENT_FLOWS)[number];
+
+export const EVENT_FLOW_INFO: Record<EventFlow, { label: string; badge: string; description: string }> = {
+  before: { label: 'Feedback, then quiz', badge: 'Feedback first', description: 'Collect feedback first; everyone then waits in the lobby.' },
+  after: { label: 'Quiz, then feedback', badge: 'Feedback after', description: 'Play the quiz first and gather reflections at the end.' },
+  both: { label: 'Before and after', badge: 'Before + after', description: 'Use one form before the quiz and another after it.' },
+  optional: { label: 'Optional feedback', badge: 'Optional feedback', description: 'Participants can skip the form and go straight to the lobby.' },
+  quiz_only: { label: 'Quiz only', badge: 'Quiz only', description: 'Run the event without a feedback step.' },
+};
+
+export const EVENT_IDENTITIES = ['identified', 'partial', 'anonymous'] as const;
+export type EventIdentity = (typeof EVENT_IDENTITIES)[number];
+
+export const EVENT_IDENTITY_INFO: Record<EventIdentity, { label: string; description: string }> = {
+  identified: { label: 'Named', description: 'Feedback is linked to each player’s nickname and quiz score.' },
+  partial: { label: 'Nickname only', description: 'Nicknames are kept, but feedback isn’t linked to quiz scores.' },
+  anonymous: { label: 'Anonymous', description: 'Responses are stored without any participant name.' },
+};
+
+export const DEFAULT_EVENT_TITLE = 'Untitled interactive event';
+
+export const FeedbackEventInput = z
+  .object({
+    title: z.string().trim().max(FORM_TITLE_MAX),
+    description: z.string().trim().max(FORM_DESCRIPTION_MAX),
+    quizId: z.uuid({ message: 'Choose a quiz.' }),
+    formId: z.uuid().nullable(),
+    /** The second form when the flow is 'both'. */
+    afterFormId: z.uuid().nullable(),
+    flow: z.enum(EVENT_FLOWS),
+    identity: z.enum(EVENT_IDENTITIES),
+    feedbackRequired: z.boolean(),
+    allowLateEntry: z.boolean(),
+  })
+  .superRefine((e, ctx) => {
+    if (e.flow !== 'quiz_only' && !e.formId) ctx.addIssue({ code: 'custom', path: ['formId'], message: 'Choose a feedback form.' });
+    if (e.flow === 'both' && !e.afterFormId)
+      ctx.addIssue({ code: 'custom', path: ['afterFormId'], message: 'Choose the form for after the quiz.' });
+  })
+  .transform((e) => ({
+    ...e,
+    title: e.title || DEFAULT_EVENT_TITLE,
+    formId: e.flow === 'quiz_only' ? null : e.formId,
+    afterFormId: e.flow === 'both' ? e.afterFormId : null,
+    feedbackRequired: e.flow === 'before' || e.flow === 'after' || e.flow === 'both' ? e.feedbackRequired : false,
+  }));
+export type FeedbackEventInput = z.input<typeof FeedbackEventInput>;

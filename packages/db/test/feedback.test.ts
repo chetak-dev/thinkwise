@@ -9,6 +9,8 @@ const { openDb } = await import('../src/client');
 const { migrateHandle } = await import('../src/migrate');
 const auth = await import('../src/auth');
 const f = await import('../src/feedback');
+const quizzes = await import('../src/quizzes');
+const sessions = await import('../src/sessions');
 
 const handle = openDb();
 const db = handle.db;
@@ -66,4 +68,60 @@ test('rejects unknown field types and oversized settings', async () => {
   await assert.rejects(() => f.saveFeedbackForm(db, alice.id, id, { title: 't', description: '', fields: [bad as never] }));
   const big = { ...newField('file', 'x2'), maxMb: 500 };
   await assert.rejects(() => f.saveFeedbackForm(db, alice.id, id, { title: 't', description: '', fields: [big] }));
+});
+
+test('events pair an owned quiz with owned forms and collect their launches', async () => {
+  const quizId = await quizzes.createQuiz(db, alice, 'Event quiz');
+  const formId = await f.createFeedbackForm(db, alice);
+  const afterId = await f.createFeedbackForm(db, alice);
+  const bobForm = await f.createFeedbackForm(db, bob);
+  const base = {
+    title: '  ',
+    description: 'Welcome',
+    quizId,
+    formId,
+    afterFormId: null,
+    flow: 'before' as const,
+    identity: 'identified' as const,
+    feedbackRequired: true,
+    allowLateEntry: true,
+  };
+
+  const made = await f.createFeedbackEvent(db, alice, base);
+  assert.ok(made.ok);
+  const event = await f.getFeedbackEvent(db, alice.id, made.id);
+  assert.equal(event?.title, 'Untitled interactive event', 'blank titles get the default');
+  assert.deepEqual([event?.quiz?.title, event?.form?.id, event?.afterForm], ['Event quiz', formId, null]);
+
+  assert.deepEqual(await f.createFeedbackEvent(db, alice, { ...base, formId: null }), { ok: false, error: 'Choose a feedback form.' });
+  assert.equal((await f.createFeedbackEvent(db, alice, { ...base, flow: 'both' })).ok, false, 'before + after needs a second form');
+  assert.equal((await f.createFeedbackEvent(db, alice, { ...base, formId: bobForm })).ok, false, 'someone else’s form');
+  assert.equal((await f.createFeedbackEvent(db, bob, base)).ok, false, 'someone else’s quiz');
+
+  const both = await f.createFeedbackEvent(db, alice, { ...base, flow: 'both', afterFormId: afterId });
+  assert.ok(both.ok);
+  assert.equal((await f.getFeedbackEvent(db, alice.id, both.id))?.afterForm?.id, afterId);
+
+  const quizOnly = await f.createFeedbackEvent(db, alice, { ...base, flow: 'quiz_only', afterFormId: afterId });
+  assert.ok(quizOnly.ok);
+  const qo = await f.getFeedbackEvent(db, alice.id, quizOnly.id);
+  assert.deepEqual([qo?.form, qo?.afterForm, qo?.feedbackRequired], [null, null, false], 'quiz-only events drop their forms');
+
+  await sessions.createGameSession(db, alice, {
+    gameId: '00000000-0000-4000-8000-0000000000e1',
+    pin: '123456',
+    quizId,
+    title: 'Event quiz',
+    questionCount: 1,
+    eventId: made.id,
+  });
+  const launches = await sessions.listEventSessions(db, alice.id, made.id);
+  assert.deepEqual(
+    launches.map((s) => s.pin),
+    ['123456'],
+  );
+  assert.equal((await sessions.listEventSessions(db, bob.id, made.id)).length, 0);
+  const listed = await f.listFeedbackEvents(db, alice.id);
+  assert.equal(listed.find((e) => e.id === made.id)?.launches, 1);
+  assert.equal(await f.getFeedbackEvent(db, bob.id, made.id), null, 'events are private to their owner');
 });

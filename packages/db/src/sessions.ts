@@ -40,13 +40,22 @@ const summaryColumns = {
 export async function createGameSession(
   db: Db,
   host: { id: string; orgId: string | null },
-  game: { gameId: string; pin: string; quizId: string | null; title: string; questionCount: number; mode?: 'live' | 'self' },
+  game: {
+    gameId: string;
+    pin: string;
+    quizId: string | null;
+    title: string;
+    questionCount: number;
+    mode?: 'live' | 'self';
+    eventId?: string | null;
+  },
 ) {
   await db.insert(gameSessions).values({
     id: game.gameId,
     hostId: host.id,
     orgId: host.orgId,
     quizId: game.quizId,
+    eventId: game.eventId ?? null,
     title: game.title,
     pin: game.pin,
     questionCount: game.questionCount,
@@ -93,6 +102,17 @@ export async function listSessions(db: Db, hostId: string, limit = 50): Promise<
     .select(summaryColumns)
     .from(gameSessions)
     .where(eq(gameSessions.hostId, hostId))
+    .orderBy(desc(gameSessions.createdAt))
+    .limit(limit);
+}
+
+/** Each launch of an interactive event, newest first. */
+export async function listEventSessions(db: Db, hostId: string, eventId: string, limit = 100): Promise<SessionSummary[]> {
+  if (!SessionId.safeParse(eventId).success) return [];
+  return db
+    .select(summaryColumns)
+    .from(gameSessions)
+    .where(and(eq(gameSessions.hostId, hostId), eq(gameSessions.eventId, eventId)))
     .orderBy(desc(gameSessions.createdAt))
     .limit(limit);
 }
