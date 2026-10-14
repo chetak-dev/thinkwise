@@ -50,6 +50,13 @@
       "when": 1791882891371,
       "tag": "0006_worried_changeling",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791957924369,
+      "tag": "0007_broken_scarecrow",
+      "breakpoints": true
     }
   ]
 }

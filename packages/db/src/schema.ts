@@ -80,6 +80,26 @@ export const quizzes = pgTable(
 
 export type QuizRow = typeof quizzes.$inferSelect;
 
+export const feedbackForms = pgTable(
+  'feedback_forms',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    orgId: uuid('org_id').references(() => organisations.id, { onDelete: 'set null' }),
+    title: text('title').notNull().default('Untitled feedback form'),
+    description: text('description').notNull().default(''),
+    /** FormField[] from @thinkwise/shared, validated on every save. */
+    fields: jsonb('fields').notNull().default([]),
+    /** Bumped on every save, so a submission can record which version it answered. */
+    version: integer('version').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('feedback_forms_owner_updated_idx').on(t.ownerId, t.updatedAt)],
+);
+
 export const favourites = pgTable(
   'favourites',
   {

@@ -4,6 +4,7 @@ import { ANSWER_TEXT_MAX, MAX_BLANKS, MAX_OPTIONS, type GameRules, type Question
 export * from './quiz';
 export * from './csv';
 export * from './results';
+export * from './feedback';
 
 /** The parts of a quiz's rules that change what screens show. */
 export type PublicRules = Pick<

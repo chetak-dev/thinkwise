@@ -32,7 +32,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Home', Icon: House, ready: true },
   { href: '/library', label: 'Library', Icon: Library, ready: true },
-  { href: '/feedback', label: 'Feedback + Quiz', Icon: MessageSquareHeart, ready: false },
+  { href: '/feedback', label: 'Feedback + Quiz', Icon: MessageSquareHeart, ready: true },
   { href: '/reports', label: 'Reports', Icon: BarChart3, ready: true },
   { href: '/org', label: 'Organisation', Icon: Building2, ready: false },
 ];
