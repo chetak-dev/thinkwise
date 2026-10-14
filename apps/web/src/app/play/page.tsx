@@ -27,6 +27,7 @@ import {
   type TrackId,
 } from '@thinkwise/shared';
 import { Logo } from '@/components/Logo';
+import { PageLoader } from '@/components/PageLoader';
 import { ConnectionBadge } from '@/components/ConnectionBadge';
 import { answerStyle } from '@/components/game/answers';
 import { Confetti } from '@/components/game/Confetti';
@@ -768,6 +769,8 @@ function PlayFlow() {
   }, []);
 
   const inGame = step !== 'pin' && step !== 'checking' && step !== 'profile' && step !== 'feedback';
+  // A join link carries the PIN, so skip the PIN screen unless the check fails.
+  const joiningByLink = linkPin.length === 6 && !error && (step === 'pin' || step === 'checking');
   useSound(
     prefs.sound,
     track,
@@ -1003,7 +1006,9 @@ function PlayFlow() {
       </header>
 
       <main id="main" className="flex flex-1 flex-col">
-        {(step === 'pin' || step === 'checking') && (
+        {joiningByLink && <PageLoader label={t.joiningGame} />}
+
+        {(step === 'pin' || step === 'checking') && !joiningByLink && (
           <div className="flex flex-1 items-center justify-center px-4 pb-16">
             <form onSubmit={submitPin} className="w-full max-w-sm animate-rise space-y-4">
               <h1 className="text-center font-display text-2xl font-bold">{t.joinTitle}</h1>

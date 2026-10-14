@@ -1,7 +1,7 @@
 import { LogoMark } from '@/components/Logo';
 
 /** Branded placeholder shown while a page renders on the server. */
-export function PageLoader({ fullScreen = false }: { fullScreen?: boolean }) {
+export function PageLoader({ fullScreen = false, label = 'Loading' }: { fullScreen?: boolean; label?: string }) {
   return (
     <div
       role="status"
@@ -19,7 +19,7 @@ export function PageLoader({ fullScreen = false }: { fullScreen?: boolean }) {
         </span>
       </div>
       <p className="flex items-center gap-1.5 font-display text-sm font-semibold tracking-wide text-muted">
-        Loading
+        {label}
         <span aria-hidden="true" className="flex gap-1">
           <span className="size-1 animate-bounce rounded-full bg-nova-500 [animation-delay:-0.3s]" />
           <span className="size-1 animate-bounce rounded-full bg-coral-500 [animation-delay:-0.15s]" />
