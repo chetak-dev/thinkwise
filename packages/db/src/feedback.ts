@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -11,7 +11,7 @@ import {
   type FormField,
 } from '@thinkwise/shared';
 import type { Db } from './client';
-import { auditLog, feedbackEvents, feedbackForms, gameSessions, quizzes } from './schema';
+import { auditLog, feedbackEvents, feedbackForms, feedbackSubmissions, gameSessions, quizzes } from './schema';
 
 const Uuid = z.uuid();
 
@@ -138,34 +138,88 @@ export interface FeedbackEventDoc {
 
 export type CreateEventResult = { ok: true; id: string } | { ok: false; error: string };
 
-export async function createFeedbackEvent(
-  db: Db,
-  owner: { id: string; orgId: string | null },
-  input: FeedbackEventInput,
-): Promise<CreateEventResult> {
+/** Parses event input and checks the quiz and forms belong to this owner. */
+async function checkEventInput(db: Db, ownerId: string, input: FeedbackEventInput) {
   const parsed = FeedbackEventInput.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the event details.' };
+  if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'Check the event details.' };
   const e = parsed.data;
   const [quiz] = await db
     .select({ id: quizzes.id })
     .from(quizzes)
-    .where(and(eq(quizzes.id, e.quizId), eq(quizzes.ownerId, owner.id), isNull(quizzes.archivedAt)))
+    .where(and(eq(quizzes.id, e.quizId), eq(quizzes.ownerId, ownerId), isNull(quizzes.archivedAt)))
     .limit(1);
-  if (!quiz) return { ok: false, error: 'That quiz isn’t available.' };
+  if (!quiz) return { ok: false as const, error: 'That quiz isn\u2019t available.' };
   const formIds = [e.formId, e.afterFormId].filter((x): x is string => !!x);
   if (formIds.length) {
     const owned = await db
       .select({ id: feedbackForms.id })
       .from(feedbackForms)
-      .where(and(inArray(feedbackForms.id, formIds), eq(feedbackForms.ownerId, owner.id)));
-    if (new Set(owned.map((f) => f.id)).size !== new Set(formIds).size) return { ok: false, error: 'That feedback form isn’t available.' };
+      .where(and(inArray(feedbackForms.id, formIds), eq(feedbackForms.ownerId, ownerId)));
+    if (new Set(owned.map((f) => f.id)).size !== new Set(formIds).size) return { ok: false as const, error: 'That feedback form isn\u2019t available.' };
   }
+  return { ok: true as const, event: e };
+}
+
+export async function createFeedbackEvent(
+  db: Db,
+  owner: { id: string; orgId: string | null },
+  input: FeedbackEventInput,
+): Promise<CreateEventResult> {
+  const checked = await checkEventInput(db, owner.id, input);
+  if (!checked.ok) return checked;
   const [row] = await db
     .insert(feedbackEvents)
-    .values({ ownerId: owner.id, orgId: owner.orgId, ...e })
+    .values({ ownerId: owner.id, orgId: owner.orgId, ...checked.event })
     .returning({ id: feedbackEvents.id });
   await db.insert(auditLog).values({ orgId: owner.orgId, userId: owner.id, action: 'feedback_event.create', meta: { eventId: row!.id } });
   return { ok: true, id: row!.id };
+}
+
+/** Changes apply to future launches; earlier launches keep their responses. */
+export async function updateFeedbackEvent(
+  db: Db,
+  owner: { id: string; orgId: string | null },
+  id: string,
+  input: FeedbackEventInput,
+): Promise<CreateEventResult> {
+  if (!Uuid.safeParse(id).success) return { ok: false, error: 'This event no longer exists.' };
+  const checked = await checkEventInput(db, owner.id, input);
+  if (!checked.ok) return checked;
+  const [row] = await db
+    .update(feedbackEvents)
+    .set({ ...checked.event, updatedAt: new Date() })
+    .where(and(eq(feedbackEvents.id, id), eq(feedbackEvents.ownerId, owner.id)))
+    .returning({ id: feedbackEvents.id });
+  if (!row) return { ok: false, error: 'This event no longer exists.' };
+  await db.insert(auditLog).values({ orgId: owner.orgId, userId: owner.id, action: 'feedback_event.update', meta: { eventId: id } });
+  return { ok: true, id };
+}
+
+/** Deletes the event and its responses; its game reports stay in Reports. */
+export async function deleteFeedbackEvent(db: Db, owner: { id: string; orgId: string | null }, id: string) {
+  if (!Uuid.safeParse(id).success) return false;
+  const [row] = await db
+    .delete(feedbackEvents)
+    .where(and(eq(feedbackEvents.id, id), eq(feedbackEvents.ownerId, owner.id)))
+    .returning({ id: feedbackEvents.id });
+  if (!row) return false;
+  await db.insert(auditLog).values({ orgId: owner.orgId, userId: owner.id, action: 'feedback_event.delete', meta: { eventId: id } });
+  return true;
+}
+
+/** How a form is used, so the editor can warn before changing or deleting it. */
+export async function feedbackFormUsage(db: Db, ownerId: string, formId: string) {
+  if (!Uuid.safeParse(formId).success) return { events: 0, responses: 0 };
+  const [events] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(feedbackEvents)
+    .where(and(eq(feedbackEvents.ownerId, ownerId), or(eq(feedbackEvents.formId, formId), eq(feedbackEvents.afterFormId, formId))));
+  const [responses] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(feedbackSubmissions)
+    .innerJoin(feedbackForms, eq(feedbackForms.id, feedbackSubmissions.formId))
+    .where(and(eq(feedbackSubmissions.formId, formId), eq(feedbackForms.ownerId, ownerId)));
+  return { events: events?.n ?? 0, responses: responses?.n ?? 0 };
 }
 
 export async function listFeedbackEvents(db: Db, ownerId: string, limit = 100): Promise<FeedbackEventSummary[]> {

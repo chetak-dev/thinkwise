@@ -19,12 +19,12 @@ function limited(request: Request) {
   return entry.count > PER_WINDOW;
 }
 
-/** Public: stores a participant's feedback for the live event game with this PIN. */
+/** Public: stores a participant's feedback for one stage of an event game. */
 export async function POST(request: Request) {
   if (limited(request)) return Response.json({ error: 'rate_limited' }, { status: 429 });
   const text = await request.text();
   if (text.length > MAX_BODY) return Response.json({ error: 'too_large' }, { status: 413 });
-  let body: { pin?: unknown; clientId?: unknown; nickname?: unknown; answers?: unknown };
+  let body: { ref?: unknown; stage?: unknown; clientId?: unknown; nickname?: unknown; answers?: unknown };
   try {
     body = JSON.parse(text) as typeof body;
   } catch {
@@ -32,7 +32,8 @@ export async function POST(request: Request) {
   }
   if (typeof body !== 'object' || body === null) return Response.json({ error: 'bad_request' }, { status: 400 });
   const result = await submitEventFeedback(getDb(), {
-    pin: body.pin,
+    ref: body.ref,
+    stage: body.stage,
     clientId: body.clientId,
     nickname: body.nickname,
     answers: body.answers,

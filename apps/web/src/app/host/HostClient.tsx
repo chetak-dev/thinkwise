@@ -9,6 +9,7 @@ import {
   Info,
   ListOrdered,
   Maximize2,
+  MessageSquareText,
   Pause,
   Play,
   RotateCcw,
@@ -57,6 +58,8 @@ export function HostClient() {
   const [search, setSearch] = useState('');
   const [celebrate, setCelebrate] = useState(0);
   const [relaunchError, setRelaunchError] = useState<string | null>(null);
+  const [gameId, setGameId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ before: number; after: number } | null>(null);
 
   const createGame = async (send: Send) => {
     setRelaunchError(null);
@@ -92,6 +95,7 @@ export function HostClient() {
           JSON.stringify({ gameId: msg.gameId, hostToken: msg.hostToken } satisfies HostSession),
         );
         setScreenLink(`/host/screen?g=${encodeURIComponent(msg.gameId)}&k=${encodeURIComponent(msg.screenKey)}`);
+        setGameId(msg.gameId);
         setConfirmEnd(false);
         setCelebrate(0);
       }
@@ -106,6 +110,31 @@ export function HostClient() {
 
   const stage = celebrate ? { ...state, celebration: state.celebration + celebrate } : state;
   useStageSounds(stage, prefs.sound, { music: prefs.music, volume: prefs.volume });
+
+  // Event games: keep the host's feedback count fresh. Plain games answer null once and polling stops.
+  useEffect(() => {
+    setFeedback(null);
+    if (!gameId) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/host/feedback?game=${encodeURIComponent(gameId)}`, { cache: 'no-store' });
+        const { count } = (await res.json()) as { count: { before: number; after: number } | null };
+        if (stopped) return;
+        setFeedback(count);
+        if (!count) return;
+      } catch {
+        // Try again on the next tick.
+      }
+      if (!stopped) timer = setTimeout(poll, 5000);
+    };
+    void poll();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [gameId]);
 
   useEffect(() => {
     if (!state.pin) return;
@@ -184,6 +213,16 @@ export function HostClient() {
           <Users className="size-4" aria-hidden="true" />
           {players.length}
         </span>
+        {feedback && (
+          <span
+            className="flex items-center gap-1.5 rounded-xl bg-coral-500/10 px-3 py-1.5 text-sm font-bold tabular-nums text-coral-600 dark:text-coral-400"
+            title={feedback.after ? `${feedback.before} before the quiz · ${feedback.after} after` : 'Feedback forms received'}
+          >
+            <MessageSquareText className="size-4" aria-hidden="true" />
+            {feedback.before + feedback.after}
+            <span className="sr-only">feedback received</span>
+          </span>
+        )}
         {screenLink && (
           <a
             href={screenLink}

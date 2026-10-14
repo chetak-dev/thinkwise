@@ -336,17 +336,120 @@ export function checkFeedback(
   return Object.keys(problems).length ? { ok: false, problems } : { ok: true, answers };
 }
 
-export interface EventCsvInput {
-  identity: EventIdentity;
-  fields: FormField[];
-  sessions: { id: string; label: string }[];
-  players: { sessionId: string; nickname: string; score: number; rank: number; correctCount: number }[];
-  submissions: { sessionId: string; nickname: string | null; submittedAt: string; answers: FeedbackAnswers }[];
+export type QuestionSummary =
+  | { kind: 'scale'; field: FormField; answered: number; average: number; counts: { label: string; n: number }[] }
+  | { kind: 'choices'; field: FormField; answered: number; counts: { label: string; n: number }[] }
+  | { kind: 'grid'; field: FormField; answered: number; rows: { label: string; counts: { label: string; n: number }[] }[] }
+  | { kind: 'ranking'; field: FormField; answered: number; order: { label: string; averagePlace: number }[] }
+  | { kind: 'number'; field: FormField; answered: number; average: number; min: number; max: number }
+  | { kind: 'text'; field: FormField; answered: number; latest: { text: string; name: string | null }[] };
+
+const LATEST_TEXTS = 50;
+
+/** Per-question summary of many submissions, newest last, for the host's responses page. */
+export function summarizeResponses(fields: FormField[], submissions: { answers: FeedbackAnswers; name: string | null }[]): QuestionSummary[] {
+  return fields
+    .filter((f) => collectsAnswer(f.type))
+    .map((field): QuestionSummary => {
+      const given = submissions.filter((s) => s.answers[field.id] !== undefined);
+      const values = given.map((s) => s.answers[field.id]!);
+      const answered = given.length;
+      const tally = (labels: { id: string; label: string }[], picked: string[][]) =>
+        labels.map((c) => ({ label: c.label, n: picked.filter((p) => p.includes(c.id)).length }));
+      switch (field.type) {
+        case 'rating':
+        case 'stars':
+        case 'scale': {
+          const [min, max] = SCALE_RANGE[field.type];
+          const nums = values.filter((v): v is number => typeof v === 'number');
+          return {
+            kind: 'scale',
+            field,
+            answered,
+            average: nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0,
+            counts: Array.from({ length: max - min + 1 }, (_, i) => ({ label: String(min + i), n: nums.filter((v) => v === min + i).length })),
+          };
+        }
+        case 'single':
+        case 'dropdown':
+          return { kind: 'choices', field, answered, counts: tally(field.choices, values.map((v) => [v as string])) };
+        case 'checkboxes':
+          return { kind: 'choices', field, answered, counts: tally(field.choices, values.map((v) => (Array.isArray(v) ? v : []))) };
+        case 'yes_no':
+          return {
+            kind: 'choices',
+            field,
+            answered,
+            counts: [
+              { label: 'Yes', n: values.filter((v) => v === 'yes').length },
+              { label: 'No', n: values.filter((v) => v === 'no').length },
+            ],
+          };
+        case 'consent':
+          return { kind: 'choices', field, answered, counts: [{ label: 'Agreed', n: values.filter((v) => v === true).length }] };
+        case 'matrix': {
+          const grids = values.filter((v): v is Record<string, string> => typeof v === 'object' && v !== null && !Array.isArray(v));
+          return {
+            kind: 'grid',
+            field,
+            answered,
+            rows: field.rows.map((r) => ({ label: r.label, counts: tally(field.choices, grids.map((g) => (g[r.id] ? [g[r.id]!] : []))) })),
+          };
+        }
+        case 'ranking': {
+          const orders = values.filter((v): v is string[] => Array.isArray(v));
+          const order = field.choices
+            .map((c) => {
+              const places = orders.map((o) => o.indexOf(c.id)).filter((i) => i >= 0);
+              return { label: c.label, averagePlace: places.length ? places.reduce((a, b) => a + b + 1, 0) / places.length : 0 };
+            })
+            .sort((a, b) => a.averagePlace - b.averagePlace);
+          return { kind: 'ranking', field, answered, order };
+        }
+        case 'number': {
+          const nums = values.filter((v): v is number => typeof v === 'number');
+          return {
+            kind: 'number',
+            field,
+            answered,
+            average: nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0,
+            min: nums.length ? Math.min(...nums) : 0,
+            max: nums.length ? Math.max(...nums) : 0,
+          };
+        }
+        default:
+          return {
+            kind: 'text',
+            field,
+            answered,
+            latest: given.slice(-LATEST_TEXTS).reverse().map((s) => ({ text: answerText(field, s.answers[field.id]), name: s.name })),
+          };
+      }
+    });
 }
 
-/** One row per participant: quiz results (when the event links them) beside their feedback. */
-export function eventFeedbackCsv({ identity, fields, sessions, players, submissions }: EventCsvInput): string {
-  const columns = fields.filter((f) => collectsAnswer(f.type));
+type CsvSubmission = { sessionId: string; stage: 'before' | 'after'; nickname: string | null; submittedAt: string; answers: FeedbackAnswers };
+
+export interface EventCsvInput {
+  identity: EventIdentity;
+  beforeFields: FormField[];
+  afterFields: FormField[];
+  sessions: { id: string; label: string }[];
+  players: { sessionId: string; nickname: string; score: number; rank: number; correctCount: number }[];
+  submissions: CsvSubmission[];
+}
+
+/** Spreadsheet header for a question, with the scale for number-button types. */
+export function questionHeading(f: FormField) {
+  const label = f.label.trim() || 'Untitled question';
+  return f.type in SCALE_RANGE ? `${label} (${SCALE_RANGE[f.type as keyof typeof SCALE_RANGE].join('\u2013')})` : label;
+}
+
+/** One row per participant: quiz results (when the event links them) beside their before and after feedback. */
+export function eventFeedbackCsv({ identity, beforeFields, afterFields, sessions, players, submissions }: EventCsvInput): string {
+  const beforeCols = beforeFields.filter((f) => collectsAnswer(f.type));
+  const afterCols = afterFields.filter((f) => collectsAnswer(f.type));
+  const both = beforeCols.length > 0 && afterCols.length > 0;
   const header = [
     'Session',
     'Name',
@@ -354,29 +457,40 @@ export function eventFeedbackCsv({ identity, fields, sessions, players, submissi
     'Quiz score',
     'Correct answers',
     'Gave feedback',
-    'Feedback submitted at',
-    ...columns.map((f) => {
-      const label = f.label.trim() || 'Untitled question';
-      return f.type in SCALE_RANGE ? `${label} (${SCALE_RANGE[f.type as keyof typeof SCALE_RANGE].join('–')})` : label;
-    }),
+    ...(beforeCols.length ? [both ? 'Before-quiz feedback at' : 'Feedback submitted at', ...beforeCols.map(questionHeading)] : []),
+    ...(afterCols.length ? [both ? 'After-quiz feedback at' : 'Feedback submitted at', ...afterCols.map((f) => (both ? `After: ${questionHeading(f)}` : questionHeading(f)))] : []),
   ];
-  const feedbackCells = (s?: EventCsvInput['submissions'][number]) =>
-    s ? ['Yes', s.submittedAt, ...columns.map((f) => answerText(f, s.answers[f.id]))] : ['No', '', ...columns.map(() => '')];
+  const stageCells = (cols: FormField[], s?: CsvSubmission) =>
+    cols.length ? [s?.submittedAt ?? '', ...cols.map((f) => (s ? answerText(f, s.answers[f.id]) : ''))] : [];
+  const feedbackCells = (before?: CsvSubmission, after?: CsvSubmission) => [
+    before || after ? 'Yes' : 'No',
+    ...stageCells(beforeCols, before),
+    ...stageCells(afterCols, after),
+  ];
+  const key = (name: string | null) => name?.toLocaleLowerCase() ?? '';
   const rows: (string | number)[][] = [];
   for (const session of sessions) {
     const own = submissions.filter((s) => s.sessionId === session.id);
-    if (identity !== 'identified') {
-      for (const s of own) rows.push([session.label, identity === 'anonymous' ? '' : (s.nickname ?? ''), '', '', '', ...feedbackCells(s)]);
+    if (identity === 'anonymous') {
+      // Nothing links an anonymous person's two forms, so each submission is its own row.
+      for (const s of own) rows.push([session.label, '', '', '', '', ...(s.stage === 'before' ? feedbackCells(s) : feedbackCells(undefined, s))]);
       continue;
     }
-    const unmatched = [...own];
-    for (const p of players.filter((x) => x.sessionId === session.id)) {
-      const at = unmatched.findIndex((s) => s.nickname?.toLocaleLowerCase() === p.nickname.toLocaleLowerCase());
-      const s = at >= 0 ? unmatched.splice(at, 1)[0] : undefined;
-      rows.push([session.label, p.nickname, p.rank, p.score, p.correctCount, ...feedbackCells(s)]);
+    const people = new Map<string, { name: string; before?: CsvSubmission; after?: CsvSubmission }>();
+    for (const s of own) {
+      const person = people.get(key(s.nickname)) ?? { name: s.nickname ?? '' };
+      person[s.stage] ??= s;
+      people.set(key(s.nickname), person);
     }
-    // Feedback from people who left before the results were saved, or a game still running.
-    for (const s of unmatched) rows.push([session.label, s.nickname ?? '', '', '', '', ...feedbackCells(s)]);
+    if (identity === 'identified') {
+      for (const p of players.filter((x) => x.sessionId === session.id)) {
+        const person = people.get(key(p.nickname));
+        people.delete(key(p.nickname));
+        rows.push([session.label, p.nickname, p.rank, p.score, p.correctCount, ...feedbackCells(person?.before, person?.after)]);
+      }
+    }
+    // Partial identity never shows scores; identified feedback from people without saved results lands here too.
+    for (const person of people.values()) rows.push([session.label, person.name, '', '', '', ...feedbackCells(person.before, person.after)]);
   }
   return toCsv([header, ...rows]);
 }

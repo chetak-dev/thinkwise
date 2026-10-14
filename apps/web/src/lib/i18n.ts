@@ -87,6 +87,9 @@ const en = {
   no: 'No',
   choose: 'Choose…',
   outOf: (n: number, max: number) => `${n} out of ${max}`,
+  afterIntro: 'One last thing: how did it go?',
+  sendAfter: 'Send feedback',
+  feedbackThanks: 'Thanks for your feedback!',
 };
 
 export type Strings = typeof en;
@@ -178,6 +181,9 @@ const hi: Strings = {
   no: 'नहीं',
   choose: 'चुनें…',
   outOf: (n: number, max: number) => `${max} में से ${n}`,
+  afterIntro: 'एक आखिरी बात: कैसा रहा?',
+  sendAfter: 'फ़ीडबैक भेजें',
+  feedbackThanks: 'आपके फ़ीडबैक के लिए धन्यवाद!',
 };
 
 const or: Strings = {
@@ -267,6 +273,9 @@ const or: Strings = {
   no: 'ନା',
   choose: 'ବାଛନ୍ତୁ…',
   outOf: (n: number, max: number) => `${max} ମଧ୍ୟରୁ ${n}`,
+  afterIntro: 'ଶେଷରେ ଏକ କଥା: କିପରି ଲାଗିଲା?',
+  sendAfter: 'ମତାମତ ପଠାନ୍ତୁ',
+  feedbackThanks: 'ଆପଣଙ୍କ ମତାମତ ପାଇଁ ଧନ୍ୟବାଦ!',
 };
 
 export const STRINGS: Record<Lang, Strings> = { en, hi, or };

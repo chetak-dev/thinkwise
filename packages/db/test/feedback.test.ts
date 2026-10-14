@@ -1,6 +1,7 @@
 import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FIELD_TYPES, newField } from '@thinkwise/shared';
+import { eq } from 'drizzle-orm';
 
 process.env.PGLITE_DIR = 'memory://';
 delete process.env.DATABASE_URL;
@@ -127,20 +128,30 @@ test('events pair an owned quiz with owned forms and collect their launches', as
   assert.equal(listed.find((e) => e.id === made.id)?.launches, 1);
   assert.equal(await f.getFeedbackEvent(db, bob.id, made.id), null, 'events are private to their owner');
 
-  const live = await ef.getLiveEventForm(db, '123456');
+  const live = await ef.getEventForPin(db, '123456');
   assert.equal(live?.eventId, made.id);
-  const rateId = live!.form.fields[0]!.id;
-  assert.equal(await ef.getLiveEventForm(db, '999999'), null);
+  assert.equal(live?.after, null, 'a feedback-first event has nothing after the quiz');
+  const ref = live!.ref;
+  const rateId = live!.before!.fields[0]!.id;
+  assert.equal(await ef.getEventForPin(db, '999999'), null);
 
-  const submit = (clientId: string, answers: unknown, nickname = 'Asha') =>
-    ef.submitEventFeedback(db, { pin: '123456', clientId, nickname, answers });
+  const submit = (clientId: string, answers: unknown, nickname = 'Asha', stage = 'before') =>
+    ef.submitEventFeedback(db, { ref, stage, clientId, nickname, answers });
   assert.deepEqual(await submit('client-0001', {}), { ok: false, error: 'invalid', problems: { [rateId]: 'required' } });
   assert.deepEqual(await submit('bad id!', { [rateId]: 4 }), { ok: false, error: 'bad_request' });
+  assert.deepEqual(await submit('client-0003', { [rateId]: 4 }, 'Asha', 'after'), { ok: false, error: 'not_found' }, 'no after form here');
   assert.deepEqual(await submit('client-0001', { [rateId]: 4 }), { ok: true });
   assert.deepEqual(await submit('client-0001', { [rateId]: 2 }), { ok: true }, 'a retried submit is accepted');
   assert.deepEqual(await submit('client-0002', { [rateId]: 5 }, 'Ravi'), { ok: true });
-  assert.deepEqual(await ef.countEventFeedback(db, alice.id, made.id), { total: 2, bySession: { '00000000-0000-4000-8000-0000000000e1': 2 } });
+  assert.deepEqual(await ef.countEventFeedback(db, alice.id, made.id), {
+    total: 2,
+    before: 2,
+    after: 0,
+    bySession: { '00000000-0000-4000-8000-0000000000e1': 2 },
+  });
   assert.equal((await ef.countEventFeedback(db, bob.id, made.id)).total, 0);
+  assert.deepEqual(await ef.countGameFeedback(db, alice.id, ref), { before: 2, after: 0 });
+  assert.equal(await ef.countGameFeedback(db, bob.id, ref), null, 'only the host sees the live count');
 
   const exported = await ef.getEventFeedbackExport(db, alice.id, made.id);
   assert.deepEqual(
@@ -153,9 +164,58 @@ test('events pair an owned quiz with owned forms and collect their launches', as
   );
   assert.equal(await ef.getEventFeedbackExport(db, bob.id, made.id), null);
 
+  // "Before and after": the second form is reachable by ref even after the game has ended.
+  const bothEvent = await f.getFeedbackEvent(db, alice.id, both.id);
+  await sessions.createGameSession(db, alice, { gameId: '00000000-0000-4000-8000-0000000000e3', pin: '222222', quizId, title: 'Both', questionCount: 1, eventId: both.id });
+  const bothInfo = await ef.getEventForPin(db, '222222');
+  assert.deepEqual([bothInfo?.before?.id, bothInfo?.after?.id], [bothEvent?.form?.id, afterId]);
+  await db.update(schema.gameSessions).set({ status: 'ended' }).where(eq(schema.gameSessions.id, '00000000-0000-4000-8000-0000000000e3'));
+  assert.equal(await ef.getEventForPin(db, '222222'), null, 'finished games no longer answer to their PIN');
+  const afterRate = bothInfo!.after!.fields[0]!.id;
+  assert.deepEqual(
+    await ef.submitEventFeedback(db, { ref: bothInfo!.ref, stage: 'after', clientId: 'client-0009', nickname: 'Asha', answers: { [afterRate]: 3 } }),
+    { ok: true },
+  );
+  assert.equal((await ef.countEventFeedback(db, alice.id, both.id)).after, 1);
+
   await sessions.createGameSession(db, alice, { gameId: '00000000-0000-4000-8000-0000000000e2', pin: '123456', quizId, title: 'Plain', questionCount: 1 });
-  assert.equal(await ef.getLiveEventForm(db, '123456'), null, 'a newer plain game with a reused PIN asks for no feedback');
+  assert.equal(await ef.getEventForPin(db, '123456'), null, 'a newer plain game with a reused PIN asks for no feedback');
 
   await db.update(schema.gameSessions).set({ status: 'ended' });
-  assert.equal(await ef.getLiveEventForm(db, '123456'), null, 'only running games take feedback');
+  assert.equal(await ef.getEventForPin(db, '123456'), null, 'only running games answer to a PIN');
+});
+
+test('events can be edited and deleted by their owner; forms report how they are used', async () => {
+  const quizId = await quizzes.createQuiz(db, alice, 'Edit quiz');
+  const formId = await f.createFeedbackForm(db, alice);
+  const otherForm = await f.createFeedbackForm(db, alice);
+  const input = {
+    title: 'Original',
+    description: '',
+    quizId,
+    formId,
+    afterFormId: null,
+    flow: 'before' as const,
+    identity: 'identified' as const,
+    feedbackRequired: true,
+    allowLateEntry: true,
+  };
+  const made = await f.createFeedbackEvent(db, alice, input);
+  assert.ok(made.ok);
+  assert.deepEqual(await f.feedbackFormUsage(db, alice.id, formId), { events: 1, responses: 0 });
+
+  const edited = await f.updateFeedbackEvent(db, alice, made.id, { ...input, title: 'Renamed', flow: 'after', formId: otherForm, allowLateEntry: false });
+  assert.deepEqual(edited, { ok: true, id: made.id });
+  const after = await f.getFeedbackEvent(db, alice.id, made.id);
+  assert.deepEqual([after?.title, after?.flow, after?.form?.id, after?.allowLateEntry], ['Renamed', 'after', otherForm, false]);
+  assert.equal((await f.feedbackFormUsage(db, alice.id, formId)).events, 0);
+  assert.equal((await f.updateFeedbackEvent(db, bob, made.id, input)).ok, false, 'only the owner edits');
+  assert.equal((await f.updateFeedbackEvent(db, alice, made.id, { ...input, formId: null })).ok, false, 'still validated');
+
+  await sessions.createGameSession(db, alice, { gameId: '00000000-0000-4000-8000-0000000000f1', pin: '333333', quizId, title: 'Edit quiz', questionCount: 1, eventId: made.id });
+  assert.equal(await f.deleteFeedbackEvent(db, bob, made.id), false);
+  assert.equal(await f.deleteFeedbackEvent(db, alice, made.id), true);
+  assert.equal(await f.getFeedbackEvent(db, alice.id, made.id), null);
+  const kept = await sessions.getSessionReport(db, alice.id, '00000000-0000-4000-8000-0000000000f1');
+  assert.equal(kept?.pin, '333333', 'the launch report survives deleting its event');
 });

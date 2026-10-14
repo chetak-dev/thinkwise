@@ -132,6 +132,8 @@ interface Game {
   report: boolean;
   reported: boolean;
   startedAt: number | null;
+  /** Events that don't allow late entry close the lobby when the quiz starts. */
+  lockOnStart: boolean;
 }
 
 type Role =
@@ -972,7 +974,8 @@ function findJoinableGame(ws: WebSocket, pin: string, conn: Connection): Game | 
     return null;
   }
   if (game.locked) {
-    fail(ws, 'lobby_locked', 'This game is not accepting new players.');
+    if (game.lockOnStart && game.phase !== 'lobby') fail(ws, 'game_started', 'This quiz has already started and isn’t taking new players.');
+    else fail(ws, 'lobby_locked', 'This game is not accepting new players.');
     return null;
   }
   return game;
@@ -1027,6 +1030,7 @@ function createGame(ws: WebSocket | null, quiz: Quiz = SAMPLE_QUIZ, mode: GameMo
     report: false,
     reported: false,
     startedAt: null,
+    lockOnStart: false,
   };
   games.set(game.id, game);
   gamesByPin.set(game.pin, game);
@@ -1111,6 +1115,10 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
     case 'host:start':
       if (game!.phase !== 'lobby') return fail(ws, 'bad_request', 'The game has already started.');
       if (game!.players.size === 0) return fail(ws, 'bad_request', 'Wait for at least one player.');
+      if (game!.lockOnStart) {
+        game!.locked = true;
+        game!.lobbyDirty = true;
+      }
       if (isSelf(game!)) return startSelfPaced(game!);
       game!.startedAt = Date.now();
       return startQuestion(game!, 0);
@@ -1261,8 +1269,11 @@ function createGameFromRequest(req: IncomingMessage, res: import('node:http').Se
     if (autoAdvance !== undefined && typeof autoAdvance !== 'boolean') return json(res, 422, { error: 'invalid_settings' });
     const mode = (body as { settings?: { mode?: unknown } }).settings?.mode ?? 'live';
     if (mode !== 'live' && mode !== 'self') return json(res, 422, { error: 'invalid_settings' });
+    const lockOnStart = (body as { settings?: { lockOnStart?: unknown } }).settings?.lockOnStart;
+    if (lockOnStart !== undefined && typeof lockOnStart !== 'boolean') return json(res, 422, { error: 'invalid_settings' });
     const game = createGame(null, quiz, mode);
     game.report = true;
+    game.lockOnStart = lockOnStart === true;
     if (autoAdvance !== undefined && mode === 'live') game.settings.autoAdvance = autoAdvance;
     json(res, 201, { gameId: game.id, pin: game.pin, hostToken: game.hostToken });
   });

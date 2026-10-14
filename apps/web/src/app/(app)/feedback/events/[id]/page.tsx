@@ -1,13 +1,29 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, ArrowRight, ClipboardList, DoorOpen, Download, Fingerprint, ListChecks, MessageSquareText, QrCode, Rocket, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  BarChart3,
+  ClipboardList,
+  DoorOpen,
+  Download,
+  Fingerprint,
+  ListChecks,
+  MessageSquareText,
+  Pencil,
+  QrCode,
+  Rocket,
+  Users,
+} from 'lucide-react';
 import { countEventFeedback, getDb, getFeedbackEvent, listEventSessions } from '@thinkwise/db';
 import { EVENT_FLOW_INFO, EVENT_IDENTITY_INFO } from '@thinkwise/shared';
 import { requireUser } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDateTime } from '@/lib/time';
 import { StatusBadge } from '@/components/SessionBits';
+import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
+import { deleteFeedbackEventAction } from '../../actions';
 import { LaunchEventButton } from './LaunchEventButton';
 
 export const metadata: Metadata = { title: 'Interactive event · ThinkWise' };
@@ -27,6 +43,8 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
   if (!event) notFound();
 
   const hasFeedback = event.flow !== 'quiz_only';
+  const outline =
+    'inline-flex h-10 items-center gap-2 rounded-xl border border-app bg-surface px-4 text-sm font-semibold transition hover:-translate-y-0.5 hover:border-nova-400';
   const formText = !hasFeedback
     ? 'No feedback step'
     : event.form
@@ -56,7 +74,12 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
       Icon: MessageSquareText,
       label: 'Responses',
       value: plural(feedback.total, 'response', 'responses'),
-      detail: sessions.length ? `Across ${plural(sessions.length, 'launch', 'launches')}` : 'Launch the lobby to start collecting',
+      detail:
+        event.flow === 'both'
+          ? `${feedback.before} before \u00b7 ${feedback.after} after the quiz`
+          : sessions.length
+            ? `Across ${plural(sessions.length, 'launch', 'launches')}`
+            : 'Launch the lobby to start collecting',
     },
   ];
 
@@ -76,11 +99,18 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
           <p className="mt-1 text-muted">{event.description || 'Feedback and a live quiz, joined into one experience.'}</p>
         </div>
         <div className="flex flex-wrap items-start gap-2">
+          <Link href={`/feedback/events/${event.id}/edit`} className={outline}>
+            <Pencil className="size-4" aria-hidden="true" />
+            Edit
+          </Link>
           {hasFeedback && (
-            <a
-              href={`/api/feedback/events/${event.id}/export`}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-app bg-surface px-4 text-sm font-semibold transition hover:-translate-y-0.5 hover:border-nova-400"
-            >
+            <Link href={`/feedback/events/${event.id}/responses`} className={outline}>
+              <BarChart3 className="size-4" aria-hidden="true" />
+              View responses
+            </Link>
+          )}
+          {hasFeedback && (
+            <a href={`/api/feedback/events/${event.id}/export`} className={outline}>
               <Download className="size-4" aria-hidden="true" />
               Export CSV
             </a>
@@ -169,6 +199,15 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
           ))}
         </ol>
       </section>
+
+      <div className="flex justify-end">
+        <ConfirmDeleteButton
+          label="Delete event"
+          title="Delete this event?"
+          description={`Its ${plural(feedback.total, 'feedback response', 'feedback responses')} will be deleted too. Quiz reports from its launches stay in Reports.`}
+          action={deleteFeedbackEventAction.bind(null, event.id)}
+        />
+      </div>
     </div>
   );
 }

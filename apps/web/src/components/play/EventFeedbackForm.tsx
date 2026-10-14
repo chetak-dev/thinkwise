@@ -14,11 +14,19 @@ import {
 } from '@thinkwise/shared';
 import type { Strings } from '@/lib/i18n';
 
+export interface PlayForm {
+  title: string;
+  description: string;
+  fields: FormField[];
+}
+
 export interface PlayEventForm {
+  ref: string;
   title: string;
   description: string;
   required: boolean;
-  form: { title: string; description: string; fields: FormField[] };
+  before: PlayForm | null;
+  after: PlayForm | null;
 }
 
 const INPUT =
@@ -228,19 +236,27 @@ function FieldInput({ field, value, set, t }: { field: FormField; value: unknown
 const LABELLED_BY_LABEL = new Set<FormField['type']>(['short_text', 'long_text', 'email', 'phone', 'number', 'date', 'datetime', 'dropdown']);
 
 export function EventFeedbackForm({
-  event,
-  name,
+  form,
+  title,
+  description,
+  intro,
+  submitLabel,
+  note,
   t,
   onSubmit,
   onSkip,
 }: {
-  event: PlayEventForm;
-  name: string;
+  form: PlayForm;
+  title: string;
+  description: string;
+  intro: string;
+  submitLabel: string;
+  note?: string;
   t: Strings;
   onSubmit: (answers: FeedbackAnswers) => Promise<'ok' | 'failed' | Record<string, AnswerProblem>>;
   onSkip?: () => void;
 }) {
-  const { fields } = event.form;
+  const { fields } = form;
   const [values, setValues] = useState<Values>(() => initialValues(fields));
   const [problems, setProblems] = useState<Record<string, AnswerProblem>>({});
   const [failed, setFailed] = useState(false);
@@ -273,11 +289,9 @@ export function EventFeedbackForm({
   return (
     <form onSubmit={submit} noValidate className="mx-auto w-full max-w-xl animate-rise space-y-4 px-4 pb-16">
       <div className="glass-panel rounded-[2rem] p-6">
-        <p className="text-sm font-bold text-nova-700 dark:text-nova-300">{t.welcomeName(name)}</p>
-        <h1 className="mt-1 font-display text-2xl font-bold">{event.form.title || event.title}</h1>
-        {(event.form.description || event.description) && (
-          <p className="mt-2 whitespace-pre-line text-muted">{event.form.description || event.description}</p>
-        )}
+        <p className="text-sm font-bold text-nova-700 dark:text-nova-300">{intro}</p>
+        <h1 className="mt-1 font-display text-2xl font-bold">{title}</h1>
+        {description && <p className="mt-2 whitespace-pre-line text-muted">{description}</p>}
       </div>
 
       {shown.map((field) => {
@@ -331,14 +345,14 @@ export function EventFeedbackForm({
         className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] text-lg font-bold text-white shadow-lift transition hover:brightness-110 disabled:opacity-60"
       >
         {sending && <Loader2 className="size-5 animate-spin" aria-hidden="true" />}
-        {sending ? t.sending : t.sendFeedback}
+        {sending ? t.sending : submitLabel}
       </button>
       {onSkip && (
         <button type="button" onClick={onSkip} disabled={sending} className="h-12 w-full rounded-2xl font-semibold text-muted hover:bg-surface-2 hover:text-app">
           {t.skipFeedback}
         </button>
       )}
-      <p className="text-center text-xs text-muted">{t.feedbackNote}</p>
+      {note && <p className="text-center text-xs text-muted">{note}</p>}
     </form>
   );
 }

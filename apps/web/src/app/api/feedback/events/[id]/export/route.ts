@@ -15,7 +15,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const timeZone = await getTimeZone();
   const csv = eventFeedbackCsv({
     identity: data.identity,
-    fields: data.fields,
+    beforeFields: data.beforeFields,
+    afterFields: data.afterFields,
     sessions: data.sessions.map((s) => ({ id: s.id, label: `PIN ${s.pin} \u00b7 ${formatDateTime(s.createdAt, timeZone)}` })),
     players: data.players,
     submissions: data.submissions.map((s) => ({ ...s, submittedAt: formatDateTime(s.createdAt, timeZone) })),

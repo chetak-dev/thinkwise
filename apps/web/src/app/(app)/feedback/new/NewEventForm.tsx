@@ -15,7 +15,7 @@ import {
   type EventIdentity,
 } from '@thinkwise/shared';
 import { Switch } from '@/components/Switch';
-import { createFeedbackEventAction } from '../actions';
+import { createFeedbackEventAction, updateFeedbackEventAction } from '../actions';
 
 interface Option {
   id: string;
@@ -34,16 +34,39 @@ function choiceClass(selected: boolean) {
   }`;
 }
 
-export function NewEventForm({ quizzes, forms }: { quizzes: Option[]; forms: Option[] }) {
-  const [title, setTitle] = useState(DEFAULT_EVENT_TITLE);
-  const [description, setDescription] = useState('');
-  const [quizId, setQuizId] = useState(quizzes[0]?.id ?? '');
-  const [formId, setFormId] = useState(forms[0]?.id ?? '');
-  const [afterFormId, setAfterFormId] = useState(forms[1]?.id ?? forms[0]?.id ?? '');
-  const [flow, setFlow] = useState<EventFlow>('before');
-  const [identity, setIdentity] = useState<EventIdentity>('identified');
-  const [feedbackRequired, setFeedbackRequired] = useState(true);
-  const [allowLateEntry, setAllowLateEntry] = useState(true);
+export interface EventFormValues {
+  title: string;
+  description: string;
+  quizId: string;
+  formId: string | null;
+  afterFormId: string | null;
+  flow: EventFlow;
+  identity: EventIdentity;
+  feedbackRequired: boolean;
+  allowLateEntry: boolean;
+}
+
+/** Creates an event, or edits one when `eventId` and `initial` are given. */
+export function NewEventForm({
+  quizzes,
+  forms,
+  eventId,
+  initial,
+}: {
+  quizzes: Option[];
+  forms: Option[];
+  eventId?: string;
+  initial?: EventFormValues;
+}) {
+  const [title, setTitle] = useState(initial?.title ?? DEFAULT_EVENT_TITLE);
+  const [description, setDescription] = useState(initial?.description ?? '');
+  const [quizId, setQuizId] = useState(initial?.quizId ?? quizzes[0]?.id ?? '');
+  const [formId, setFormId] = useState(initial?.formId ?? forms[0]?.id ?? '');
+  const [afterFormId, setAfterFormId] = useState(initial?.afterFormId ?? forms[1]?.id ?? forms[0]?.id ?? '');
+  const [flow, setFlow] = useState<EventFlow>(initial?.flow ?? 'before');
+  const [identity, setIdentity] = useState<EventIdentity>(initial?.identity ?? 'identified');
+  const [feedbackRequired, setFeedbackRequired] = useState(initial?.feedbackRequired ?? true);
+  const [allowLateEntry, setAllowLateEntry] = useState(initial?.allowLateEntry ?? true);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -54,7 +77,7 @@ export function NewEventForm({ quizzes, forms }: { quizzes: Option[]; forms: Opt
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      const result = await createFeedbackEventAction({
+      const values = {
         title,
         description,
         quizId,
@@ -64,7 +87,8 @@ export function NewEventForm({ quizzes, forms }: { quizzes: Option[]; forms: Opt
         identity,
         feedbackRequired,
         allowLateEntry,
-      });
+      };
+      const result = eventId ? await updateFeedbackEventAction(eventId, values) : await createFeedbackEventAction(values);
       // Success redirects, so only failures return here.
       if (result && !result.ok) setError(result.error);
     });
@@ -206,7 +230,7 @@ export function NewEventForm({ quizzes, forms }: { quizzes: Option[]; forms: Opt
 
       <div className="flex justify-end gap-2">
         <Link
-          href="/feedback"
+          href={eventId ? `/feedback/events/${eventId}` : '/feedback'}
           className="inline-flex h-11 items-center rounded-xl border border-app bg-surface px-5 text-sm font-semibold hover:border-nova-400"
         >
           Cancel
@@ -217,7 +241,7 @@ export function NewEventForm({ quizzes, forms }: { quizzes: Option[]; forms: Opt
           className="inline-flex h-11 items-center gap-2 rounded-xl bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] px-5 text-sm font-semibold text-white shadow-lift transition hover:brightness-110 disabled:pointer-events-none disabled:opacity-50"
         >
           {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Sparkles className="size-4" aria-hidden="true" />}
-          Create event
+          {eventId ? 'Save changes' : 'Create event'}
         </button>
       </div>
     </form>

@@ -6,10 +6,13 @@ import {
   createFeedbackEvent,
   createFeedbackForm,
   createGameSession,
+  deleteFeedbackEvent,
+  deleteFeedbackForm,
   getDb,
   getFeedbackEvent,
   getQuiz,
   saveFeedbackForm,
+  updateFeedbackEvent,
 } from '@thinkwise/db';
 import { FeedbackFormSave, toPlayable, type FeedbackEventInput } from '@thinkwise/shared';
 import { requireUser } from '@/lib/session';
@@ -42,6 +45,29 @@ export async function createFeedbackEventAction(input: FeedbackEventInput): Prom
   redirect(`/feedback/events/${result.id}`);
 }
 
+export async function updateFeedbackEventAction(id: string, input: FeedbackEventInput): Promise<{ ok: false; error: string }> {
+  const user = await requireUser();
+  const result = await updateFeedbackEvent(getDb(), user, id, input);
+  if (!result.ok) return result;
+  revalidatePath('/feedback');
+  revalidatePath(`/feedback/events/${id}`);
+  redirect(`/feedback/events/${id}`);
+}
+
+export async function deleteFeedbackEventAction(id: string) {
+  const user = await requireUser();
+  await deleteFeedbackEvent(getDb(), user, id);
+  revalidatePath('/feedback');
+  redirect('/feedback');
+}
+
+export async function deleteFeedbackFormAction(id: string) {
+  const user = await requireUser();
+  await deleteFeedbackForm(getDb(), user, id);
+  revalidatePath('/feedback');
+  redirect('/feedback');
+}
+
 export type LaunchResult = { ok: true; gameId: string; hostToken: string; quizId: string } | { ok: false; error: string };
 
 /** Opens a live lobby for the event's quiz; each launch is recorded as its own session. */
@@ -59,7 +85,7 @@ export async function launchFeedbackEventAction(id: string): Promise<LaunchResul
     return { ok: false, error: `The quiz isn’t ready to play: ${why}. Open it in the editor to fix it.` };
   }
   try {
-    const game = await createLiveGame(check.quiz, { autoAdvance: true, mode: 'live' });
+    const game = await createLiveGame(check.quiz, { autoAdvance: true, mode: 'live', lockOnStart: !event.allowLateEntry });
     await createGameSession(db, user, {
       gameId: game.gameId,
       pin: game.pin,

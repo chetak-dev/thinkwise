@@ -60,7 +60,8 @@ import {
   type FormField,
 } from '@thinkwise/shared';
 import { Switch } from '@/components/Switch';
-import { saveFeedbackFormAction } from '../../actions';
+import { ConfirmDeleteButton } from '@/components/ConfirmDeleteButton';
+import { deleteFeedbackFormAction, saveFeedbackFormAction } from '../../actions';
 
 const FIELD_ICONS: Record<FieldType, ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' }>> = {
   short_text: Type,
@@ -159,7 +160,7 @@ function clampInt(value: string, min: number, max: number, fallback: number) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function FormEditor({ form }: { form: EditorForm }) {
+export function FormEditor({ form, usage }: { form: EditorForm; usage: { events: number; responses: number } }) {
   const [doc, setDoc] = useState<Doc>({ title: form.title, description: form.description, fields: form.fields });
   const [selectedId, setSelectedId] = useState<string | null>(form.fields[0]?.id ?? null);
   const { fields } = doc;
@@ -313,7 +314,24 @@ export function FormEditor({ form }: { form: EditorForm }) {
           <Save className="size-4" aria-hidden="true" />
           Save
         </button>
+        <ConfirmDeleteButton
+          label="Delete form"
+          title="Delete this form?"
+          description={
+            usage.events
+              ? `It is used by ${usage.events} ${usage.events === 1 ? 'event' : 'events'}. They will need another form, and their exports and summaries will lose this form\u2019s questions.`
+              : 'This can’t be undone.'
+          }
+          action={deleteFeedbackFormAction.bind(null, form.id)}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40"
+        />
       </header>
+
+      {usage.responses > 0 && (
+        <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          This form already has {usage.responses} {usage.responses === 1 ? 'response' : 'responses'}. Edits apply to new responses; answers to questions you delete drop out of the exports.
+        </p>
+      )}
 
       {saveError && !saving && (
         <p role="alert" className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">

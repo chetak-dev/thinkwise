@@ -456,7 +456,28 @@ test('POST /games: secret required, quiz validated, game playable without leakin
   h4.send({ t: 'host:resume', gameId: plain.gameId, hostToken: plain.hostToken });
   assert.equal((await h4.next('settings')).settings.autoAdvance, true, 'live games auto-advance by default');
 
-  for (const x of [h, h2, h3, h4, p.c]) x.close();
+  // Events without late entry close the doors when the quiz starts; players already in can rejoin.
+  assert.equal((await post({ quiz, settings: { lockOnStart: 'yes' } }, auth)).status, 422);
+  const closed = (await (await post({ quiz, settings: { lockOnStart: true, autoAdvance: false } }, auth)).json()) as typeof created;
+  const h5 = new Client();
+  await h5.open();
+  h5.send({ t: 'host:resume', gameId: closed.gameId, hostToken: closed.hostToken });
+  await h5.next('host:ready');
+  const early = await player(closed.pin, 'Early');
+  const beforeStart = await player(closed.pin, 'Second');
+  h5.send({ t: 'host:start' });
+  await early.c.next('question');
+  const late = new Client();
+  await late.open();
+  late.send({ t: 'pin:check', pin: closed.pin });
+  const refused = await late.next('error');
+  assert.equal(refused.code, 'game_started', 'latecomers are turned away once it starts');
+  const back = new Client();
+  await back.open();
+  back.send({ t: 'player:resume', pin: closed.pin, playerToken: beforeStart.ready.playerToken });
+  assert.equal((await back.next('player:ready')).nickname, 'Second', 'players who joined in time can reconnect');
+
+  for (const x of [h, h2, h3, h4, h5, p.c, early.c, beforeStart.c, late, back]) x.close();
 });
 
 test('multi-select needs exactly the right set; typed answers match loosely; both are reported', async () => {

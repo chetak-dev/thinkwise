@@ -16,6 +16,8 @@ export interface LiveGame {
 export interface StartOptions {
   autoAdvance: boolean;
   mode: GameMode;
+  /** Close the lobby when the quiz starts (events without late entry). */
+  lockOnStart?: boolean;
 }
 
 /** True only for requests from our game server (constant-time comparison). */

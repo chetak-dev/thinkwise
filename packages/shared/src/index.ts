@@ -194,6 +194,7 @@ export type ErrorCode =
   | 'game_not_found'
   | 'game_over'
   | 'lobby_locked'
+  | 'game_started'
   | 'name_taken'
   | 'rate_limited'
   | 'not_authorized'

@@ -60,7 +60,8 @@ type Final = Extract<ServerMessage, { t: 'final' }>;
 type AnswerInput = { choice: number } | { choices: number[] } | { text: string } | { number: number } | { blanks: string[] };
 
 const tokenKey = (pin: string) => `tw-player-${pin}`;
-const feedbackDoneKey = (pin: string) => `tw-feedback-done-${pin}`;
+const feedbackDoneKey = (pin: string, stage: 'before' | 'after') => `tw-feedback-${stage}-done-${pin}`;
+const eventRefKey = (pin: string) => `tw-event-ref-${pin}`;
 
 /** Stable per PIN, so a retried submit isn't stored twice. randomUUID needs HTTPS, hence the fallback. */
 function feedbackClientId(pin: string) {
@@ -73,10 +74,14 @@ function feedbackClientId(pin: string) {
   return id;
 }
 
+/** The event behind this PIN. Once found, its ref keeps working after the game ends (for after-quiz feedback). */
 async function loadEventForm(pin: string): Promise<PlayEventForm | null> {
+  const ref = localStorage.getItem(eventRefKey(pin));
   try {
-    const res = await fetch(`/api/play/event?pin=${pin}`, { cache: 'no-store' });
-    return res.ok ? ((await res.json()) as { event: PlayEventForm | null }).event : null;
+    const res = await fetch(`/api/play/event?${ref ? `ref=${encodeURIComponent(ref)}` : `pin=${pin}`}`, { cache: 'no-store' });
+    const event = res.ok ? ((await res.json()) as { event: PlayEventForm | null }).event : null;
+    if (event) localStorage.setItem(eventRefKey(pin), event.ref);
+    return event;
   } catch {
     // Without the form the player can still join the game.
     return null;
@@ -746,7 +751,17 @@ function PlayFlow() {
   const [mode, setMode] = useState<GameMode>('live');
   const [track, setTrack] = useState<TrackId | null>(null);
   const [eventForm, setEventForm] = useState<PlayEventForm | null>(null);
-  const eventFormLoad = useRef<Promise<PlayEventForm | null>>(Promise.resolve(null));
+  const [afterDone, setAfterDone] = useState(false);
+  const eventFormLoad = useRef<Promise<PlayEventForm | null> | null>(null);
+
+  const ensureEventForm = (p: string) => {
+    eventFormLoad.current ??= loadEventForm(p).then((event) => {
+      setEventForm(event);
+      setAfterDone(!!localStorage.getItem(feedbackDoneKey(p, 'after')));
+      return event;
+    });
+    return eventFormLoad.current;
+  };
 
   useEffect(() => {
     setAvatar(AVATARS[Math.floor(Math.random() * AVATARS.length)]!);
@@ -785,12 +800,14 @@ function PlayFlow() {
         case 'pin:ok':
           setPin(msg.pin);
           setError(null);
-          eventFormLoad.current = loadEventForm(msg.pin);
+          void ensureEventForm(msg.pin);
           setStep('profile');
           break;
         case 'player:ready':
           localStorage.setItem(tokenKey(msg.pin), msg.playerToken);
           setPin(msg.pin);
+          // Rejoining players skip the PIN screen, so look the event up here too.
+          void ensureEventForm(msg.pin);
           setMe({ id: msg.playerId, nickname: msg.nickname, avatar: msg.avatar });
           setScore(msg.score);
           setRules(msg.rules);
@@ -887,9 +904,8 @@ function PlayFlow() {
   const submitProfile = async (e: FormEvent) => {
     e.preventDefault();
     if (!pin || !nickname.trim()) return;
-    const event = await eventFormLoad.current;
-    if (event && !localStorage.getItem(feedbackDoneKey(pin))) {
-      setEventForm(event);
+    const event = await ensureEventForm(pin);
+    if (event?.before && !localStorage.getItem(feedbackDoneKey(pin, 'before'))) {
       setStep('feedback');
       window.scrollTo({ top: 0 });
       return;
@@ -897,22 +913,29 @@ function PlayFlow() {
     join();
   };
 
-  const sendFeedback = async (answers: FeedbackAnswers): Promise<'ok' | 'failed' | Record<string, AnswerProblem>> => {
-    if (!pin) return 'failed';
+  const sendFeedback = async (stage: 'before' | 'after', answers: FeedbackAnswers): Promise<'ok' | 'failed' | Record<string, AnswerProblem>> => {
+    if (!pin || !eventForm) return 'failed';
     try {
       const res = await fetch('/api/play/feedback', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ pin, clientId: feedbackClientId(pin), nickname: nickname.trim(), answers }),
+        body: JSON.stringify({
+          ref: eventForm.ref,
+          stage,
+          clientId: feedbackClientId(pin),
+          nickname: stage === 'after' && me ? me.nickname : nickname.trim(),
+          answers,
+        }),
       });
       if (res.status === 422) return ((await res.json()) as { problems: Record<string, AnswerProblem> }).problems;
-      // 404: the game has ended or isn't an event any more, so there's nothing to hold the player back for.
+      // 404: the event has gone, so there's nothing to hold the player back for.
       if (!res.ok && res.status !== 404) return 'failed';
     } catch {
       return 'failed';
     }
-    localStorage.setItem(feedbackDoneKey(pin), '1');
-    join();
+    localStorage.setItem(feedbackDoneKey(pin, stage), '1');
+    if (stage === 'before') join();
+    else setAfterDone(true);
     return 'ok';
   };
 
@@ -1077,12 +1100,16 @@ function PlayFlow() {
           </div>
         )}
 
-        {step === 'feedback' && eventForm && (
+        {step === 'feedback' && eventForm?.before && (
           <EventFeedbackForm
-            event={eventForm}
-            name={nickname.trim()}
+            form={eventForm.before}
+            title={eventForm.before.title || eventForm.title}
+            description={eventForm.before.description || eventForm.description}
+            intro={t.welcomeName(nickname.trim())}
+            submitLabel={t.sendFeedback}
+            note={t.feedbackNote}
             t={t}
-            onSubmit={sendFeedback}
+            onSubmit={(answers) => sendFeedback('before', answers)}
             onSkip={eventForm.required ? undefined : join}
           />
         )}
@@ -1157,6 +1184,25 @@ function PlayFlow() {
             )}
 
             {step === 'final' && final && <FinalStage final={final} me={me} t={t} rules={rules} />}
+            {step === 'final' && eventForm?.after && (
+              <div className="-mx-4 mt-8">
+                {afterDone ? (
+                  <p role="status" className="glass-panel mx-4 rounded-2xl p-5 text-center font-display text-lg font-bold">
+                    {t.feedbackThanks}
+                  </p>
+                ) : (
+                  <EventFeedbackForm
+                    form={eventForm.after}
+                    title={eventForm.after.title || eventForm.title}
+                    description={eventForm.after.description}
+                    intro={t.afterIntro}
+                    submitLabel={t.sendAfter}
+                    t={t}
+                    onSubmit={(answers) => sendFeedback('after', answers)}
+                  />
+                )}
+              </div>
+            )}
           </div>
         )}
 
