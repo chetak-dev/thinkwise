@@ -35,7 +35,7 @@ export default async function FeedbackPage() {
             <Sparkles className="size-4" aria-hidden="true" />
             Create complete event
           </span>
-          <form action={createFeedbackFormAction}>
+          <form action={createFeedbackFormAction} data-navigates>
             <button type="submit" className={`${BUTTON} border border-app bg-surface hover:border-nova-400 hover:text-nova-700 dark:hover:text-nova-300`}>
               <Plus className="size-4" aria-hidden="true" />
               New feedback form

@@ -62,7 +62,7 @@ export const INITIAL_STAGE: StageState = {
   rules: DEFAULT_RULES,
   players: [],
   locked: false,
-  settings: { leaderboardAfterEach: true, liveCounts: true, autoAdvance: false, soundtrack: 'ocean-drive', mode: 'live' },
+  settings: { leaderboardAfterEach: true, liveCounts: true, autoAdvance: true, soundtrack: 'ocean-drive', mode: 'live' },
   phase: 'connecting',
   question: null,
   timer: null,

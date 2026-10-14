@@ -119,7 +119,7 @@ export async function publishQuizAction(id: string): Promise<PublishActionResult
 /** Untrusted options from the start dialog, reduced to what the game server accepts. */
 function startOptions(options?: { autoAdvance?: unknown; mode?: unknown }) {
   const mode: GameMode = options?.mode === 'self' ? 'self' : 'live';
-  return { autoAdvance: mode === 'live' && options?.autoAdvance === true, mode };
+  return { autoAdvance: mode === 'live' && options?.autoAdvance !== false, mode };
 }
 
 export async function hostQuizAction(id: string, options?: { autoAdvance?: unknown; mode?: unknown }): Promise<HostResult> {

@@ -53,6 +53,9 @@
   --animate-pop: pop 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.3);
   --animate-rise: rise 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-float: float 6s ease-in-out infinite;
+  /* Delayed so fast navigations never flash the loader; backwards fill keeps it visible when animations are off. */
+  --animate-loader-in: loader-in 0.35s ease-out 0.15s backwards;
+  --animate-breathe: breathe 1.6s ease-in-out infinite;
 }
 
 :root {
@@ -189,6 +192,23 @@
     background-image:
       radial-gradient(circle at 8% -10%, #6d4aff38, transparent 32rem),
       radial-gradient(circle at 95% 5%, #14c9b81a, transparent 28rem);
+  }
+}
+
+@keyframes loader-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.9);
   }
 }
 

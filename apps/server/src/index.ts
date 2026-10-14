@@ -1005,7 +1005,7 @@ function createGame(ws: WebSocket | null, quiz: Quiz = SAMPLE_QUIZ, mode: GameMo
     settings: {
       leaderboardAfterEach: quiz.rules.showLeaderboard,
       liveCounts: true,
-      autoAdvance: false,
+      autoAdvance: mode === 'live',
       soundtrack: 'ocean-drive',
       mode,
     },

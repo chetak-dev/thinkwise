@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
+import { Suspense } from 'react';
+import { NavProgress } from '@/components/NavProgress';
 import { WakeRealtime } from '@/components/WakeRealtime';
 import './globals.css';
 
@@ -28,6 +30,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {themeScript}
         </Script>
         <WakeRealtime />
+        <Suspense fallback={null}>
+          <NavProgress />
+        </Suspense>
         {children}
       </body>
     </html>

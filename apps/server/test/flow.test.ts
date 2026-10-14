@@ -445,7 +445,18 @@ test('POST /games: secret required, quiz validated, game playable without leakin
   const autoSettings = await h2.next('settings');
   assert.equal(autoSettings.settings.autoAdvance, true, 'starting settings applied');
 
-  for (const x of [h, h2, p.c]) x.close();
+  const manual = (await (await post({ quiz, settings: { autoAdvance: false } }, auth)).json()) as typeof created;
+  const plain = (await (await post({ quiz }, auth)).json()) as typeof created;
+  const h3 = new Client();
+  await h3.open();
+  h3.send({ t: 'host:resume', gameId: manual.gameId, hostToken: manual.hostToken });
+  assert.equal((await h3.next('settings')).settings.autoAdvance, false, 'host can start with auto-advance off');
+  const h4 = new Client();
+  await h4.open();
+  h4.send({ t: 'host:resume', gameId: plain.gameId, hostToken: plain.hostToken });
+  assert.equal((await h4.next('settings')).settings.autoAdvance, true, 'live games auto-advance by default');
+
+  for (const x of [h, h2, h3, h4, p.c]) x.close();
 });
 
 test('multi-select needs exactly the right set; typed answers match loosely; both are reported', async () => {

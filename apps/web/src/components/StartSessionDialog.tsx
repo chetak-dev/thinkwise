@@ -32,7 +32,7 @@ export function StartSessionDialog({
   onStart: (options: { autoAdvance: boolean; mode: GameMode }) => void;
   pending: boolean;
 }) {
-  const [autoAdvance, setAutoAdvance] = useState(false);
+  const [autoAdvance, setAutoAdvance] = useState(true);
   const [mode, setMode] = useState<GameMode>('live');
 
   return (
