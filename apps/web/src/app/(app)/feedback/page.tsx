@@ -88,7 +88,7 @@ export default async function FeedbackPage() {
       <section className="space-y-3">
         <div>
           <h2 className="font-display text-xl font-bold">Feedback forms</h2>
-          <p className="text-sm text-muted">Reusable forms with conditional questions and upload limits.</p>
+          <p className="text-sm text-muted">Reusable forms with ratings, choices and questions that appear only when relevant.</p>
         </div>
         {forms.length === 0 ? (
           <div className="flex flex-col items-center rounded-3xl border border-dashed border-app bg-surface px-6 py-12 text-center">

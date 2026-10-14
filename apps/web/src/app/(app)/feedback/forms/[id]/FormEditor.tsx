@@ -343,7 +343,7 @@ export function FormEditor({ form, usage }: { form: EditorForm; usage: { events:
         <aside aria-label="Add a field" className="border-b border-app bg-surface p-4 lg:w-56 lg:shrink-0 lg:border-b-0 lg:border-r">
           <p className="mb-3 text-xs font-bold uppercase tracking-[.16em] text-muted">Add a field</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-1">
-            {FIELD_TYPES.map((type) => {
+            {FIELD_TYPES.filter((type) => !isUpload(type)).map((type) => {
               const Icon = FIELD_ICONS[type];
               return (
                 <button
