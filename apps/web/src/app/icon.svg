@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#8466ff"/>
-      <stop offset="0.55" stop-color="#5b34f0"/>
-      <stop offset="1" stop-color="#3a1aa8"/>
+      <stop offset="0" stop-color="#7b5cff"/>
+      <stop offset="0.55" stop-color="#e9468f"/>
+      <stop offset="1" stop-color="#ff8a3d"/>
     </linearGradient>
     <radialGradient id="shine" cx="0.25" cy="0.15" r="0.75">
       <stop offset="0" stop-color="#fff" stop-opacity="0.32"/>
@@ -13,5 +13,5 @@
   <rect width="32" height="32" rx="9" fill="url(#bg)"/>
   <rect width="32" height="32" rx="9" fill="url(#shine)"/>
   <path d="M9.5 9.5h13M16 9.5v9.2" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>
-  <circle cx="16" cy="23.6" r="2.3" fill="#5eead4"/>
+  <circle cx="16" cy="23.6" r="2.3" fill="#ffd84d"/>
 </svg>

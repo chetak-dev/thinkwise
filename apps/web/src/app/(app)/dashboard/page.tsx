@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, BarChart3, BookOpenCheck, Globe, Library, Maximize2, Plus, Sparkles, Users } from 'lucide-react';
-import { dashboardStats, getDb, getOrganisationName, listQuizzes, sessionCounts } from '@thinkwise/db';
+import { dashboardStats, getDb, getOrganisationName, listQuizzes, listRunningSessions, sessionCounts } from '@thinkwise/db';
 import { requireUser } from '@/lib/session';
+import { liveGameStatus, type LivePhase } from '@/lib/realtime';
 import { createQuizAction } from '@/app/(app)/quiz-actions';
 import { QuizCard } from '@/components/QuizCard';
 import { NewQuizButton } from '@/components/NewQuizButton';
+import { ResumeSessionButton } from '@/components/ResumeSessionButton';
 import { SampleHostLink } from '@/components/SampleHostLink';
 import { Greeting } from '@/components/Greeting';
 import { MODE_LABELS, StatusBadge } from '@/components/SessionBits';
@@ -15,6 +17,14 @@ import { formatDateTime } from '@/lib/time';
 export const metadata: Metadata = { title: 'Home · ThinkWise' };
 
 const RECENT_SESSIONS = 8;
+
+const PHASE_LABELS: Record<LivePhase, string> = {
+  lobby: 'Waiting in the lobby',
+  question: 'Question on screen',
+  reveal: 'Showing the answer',
+  leaderboard: 'Showing the leaderboard',
+  finished: 'Finished',
+};
 
 function StatCard({ label, value, hint, Icon }: { label: string; value: number; hint: string; Icon: typeof Library }) {
   return (
@@ -32,13 +42,22 @@ function StatCard({ label, value, hint, Icon }: { label: string; value: number; 
 export default async function DashboardPage() {
   const user = await requireUser();
   const db = getDb();
-  const [orgName, recent, stats, timeZone] = await Promise.all([
+  const [orgName, recent, stats, timeZone, candidates] = await Promise.all([
     getOrganisationName(db, user.orgId),
     listQuizzes(db, user.id, { limit: 6 }),
     dashboardStats(db, user.id, RECENT_SESSIONS),
     getTimeZone(),
+    listRunningSessions(db, user.id),
   ]);
-  const counts = await sessionCounts(db, user.id, recent.map((q) => q.id));
+  const [counts, live] = await Promise.all([
+    sessionCounts(
+      db,
+      user.id,
+      recent.map((q) => q.id),
+    ),
+    liveGameStatus(candidates.map((s) => s.id)),
+  ]);
+  const running = candidates.filter((s) => live[s.id] && live[s.id]!.phase !== 'finished');
   const total = stats.quizzes;
   const firstName = user.name.trim().split(/\s+/)[0] ?? user.name;
 
@@ -71,6 +90,35 @@ export default async function DashboardPage() {
           </Link>
         </div>
       </section>
+
+      {running.length > 0 && (
+        <section aria-labelledby="running-heading" className="space-y-3">
+          <h2 id="running-heading" className="flex items-center gap-2 font-display text-xl font-bold">
+            <span className="relative flex size-2.5" aria-hidden="true">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
+            </span>
+            Running now
+          </h2>
+          <ul className="grid gap-3 lg:grid-cols-2">
+            {running.map((s) => (
+              <li
+                key={s.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-surface p-4 shadow-soft dark:border-emerald-900"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{s.title}</p>
+                  <p className="text-sm text-muted">
+                    PIN <span className="font-semibold tabular-nums text-app">{s.pin}</span> · {PHASE_LABELS[live[s.id]!.phase]} ·{' '}
+                    {live[s.id]!.players} {live[s.id]!.players === 1 ? 'player' : 'players'}
+                  </p>
+                </div>
+                <ResumeSessionButton sessionId={s.id} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section aria-label="At a glance" className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Quizzes" value={stats.quizzes} hint="In your library" Icon={Library} />

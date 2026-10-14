@@ -11,6 +11,7 @@ import {
   duplicateQuiz,
   getDb,
   getHostablePublished,
+  getResumableSession,
   getQuiz,
   publishQuiz,
   saveQuiz,
@@ -138,6 +139,7 @@ export async function hostQuizAction(id: string, options?: { autoAdvance?: unkno
       title: check.quiz.title,
       questionCount: check.quiz.questions.length,
       mode: start.mode,
+      hostToken: game.hostToken,
     });
     return { ok: true, gameId: game.gameId, hostToken: game.hostToken };
   } catch {
@@ -160,11 +162,23 @@ export async function hostPublishedQuizAction(id: string, options?: { autoAdvanc
       title: quiz.title,
       questionCount: quiz.questions.length,
       mode: start.mode,
+      hostToken: game.hostToken,
     });
     return { ok: true, gameId: game.gameId, hostToken: game.hostToken };
   } catch {
     return { ok: false, error: 'The game server isn’t responding. Please try again in a moment.' };
   }
+}
+
+export type ResumeResult =
+  | { ok: true; gameId: string; hostToken: string; quizId: string | null; source: 'draft' | 'published' }
+  | { ok: false; error: string };
+
+/** Hands the owner the controls of one of their running games again (e.g. from a new tab). */
+export async function resumeSessionAction(id: string): Promise<ResumeResult> {
+  const user = await requireUser();
+  const session = await getResumableSession(getDb(), user.id, id);
+  return session ? { ok: true, ...session } : { ok: false, error: 'This game has already ended.' };
 }
 
 export async function copyQuizAction(id: string) {

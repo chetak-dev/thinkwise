@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { GameResults, SessionStatus } from '@thinkwise/shared';
 import type { Db } from './client';
@@ -49,6 +49,7 @@ export async function createGameSession(
     questionCount: number;
     mode?: 'live' | 'self';
     eventId?: string | null;
+    hostToken?: string;
   },
 ) {
   await db.insert(gameSessions).values({
@@ -57,6 +58,7 @@ export async function createGameSession(
     orgId: host.orgId,
     quizId: game.quizId,
     eventId: game.eventId ?? null,
+    hostToken: game.hostToken ?? null,
     title: game.title,
     pin: game.pin,
     questionCount: game.questionCount,
@@ -105,6 +107,42 @@ export async function listSessions(db: Db, hostId: string, limit = 50): Promise<
     .where(eq(gameSessions.hostId, hostId))
     .orderBy(desc(gameSessions.createdAt))
     .limit(limit);
+}
+
+/** The host's sessions that may still be running (recent and not yet reported). */
+export async function listRunningSessions(db: Db, hostId: string, limit = 10): Promise<SessionSummary[]> {
+  return db
+    .select(summaryColumns)
+    .from(gameSessions)
+    .where(
+      and(
+        eq(gameSessions.hostId, hostId),
+        eq(gameSessions.status, 'live'),
+        isNotNull(gameSessions.hostToken),
+        gt(gameSessions.createdAt, sql`now() - interval '12 hours'`),
+      ),
+    )
+    .orderBy(desc(gameSessions.createdAt))
+    .limit(limit);
+}
+
+/** What the host screen needs to take control of one of the owner's running games again. */
+export async function getResumableSession(db: Db, hostId: string, id: string) {
+  if (!SessionId.safeParse(id).success) return null;
+  const [row] = await db
+    .select({
+      gameId: gameSessions.id,
+      hostToken: gameSessions.hostToken,
+      quizId: gameSessions.quizId,
+      ownsQuiz: sql<boolean>`${quizzes.ownerId} = ${hostId}`,
+    })
+    .from(gameSessions)
+    .leftJoin(quizzes, eq(quizzes.id, gameSessions.quizId))
+    .where(and(eq(gameSessions.id, id), eq(gameSessions.hostId, hostId), eq(gameSessions.status, 'live')))
+    .limit(1);
+  return row?.hostToken
+    ? { gameId: row.gameId, hostToken: row.hostToken, quizId: row.quizId, source: row.ownsQuiz ? ('draft' as const) : ('published' as const) }
+    : null;
 }
 
 /** Each launch of an interactive event, newest first. */

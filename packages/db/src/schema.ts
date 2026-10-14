@@ -151,6 +151,8 @@ export const gameSessions = pgTable(
     eventId: uuid('event_id').references(() => feedbackEvents.id, { onDelete: 'set null' }),
     title: text('title').notNull(),
     pin: text('pin').notNull(),
+    /** Lets the owner reopen a running lobby from another tab; the game server forgets it once the game ends. */
+    hostToken: text('host_token'),
     mode: text('mode', { enum: ['live', 'self'] }).notNull().default('live'),
     status: text('status', { enum: ['live', 'ended', 'abandoned'] }).notNull().default('live'),
     questionCount: integer('question_count').notNull().default(0),

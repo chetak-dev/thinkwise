@@ -98,3 +98,21 @@ test('a game left "live" by a server restart reads as not played once it is old'
   assert.equal((await s.getSessionReport(db, host.id, gameId))?.status, 'abandoned');
   assert.equal((await s.listSessions(db, host.id)).find((x) => x.id === gameId)?.status, 'abandoned');
 });
+
+test('only the host can pick a running game back up, and only while it is running', async () => {
+  const quizId = await q.createQuiz(db, host, 'Running quiz');
+  const gameId = randomUUID();
+  await s.createGameSession(db, host, { gameId, pin: '111222', quizId, title: 'Running quiz', questionCount: 2, hostToken: 'secret-token' });
+  assert.deepEqual(
+    (await s.listRunningSessions(db, host.id)).map((x) => x.id),
+    [gameId],
+    'older games without a saved token are not offered',
+  );
+  assert.deepEqual(await s.getResumableSession(db, host.id, gameId), { gameId, hostToken: 'secret-token', quizId, source: 'draft' });
+  assert.equal(await s.getResumableSession(db, other.id, gameId), null, "another host can't take over");
+  assert.deepEqual(await s.listRunningSessions(db, other.id), []);
+
+  await s.recordResults(db, results(gameId));
+  assert.deepEqual(await s.listRunningSessions(db, host.id), []);
+  assert.equal(await s.getResumableSession(db, host.id, gameId), null, 'finished games are not resumable');
+});

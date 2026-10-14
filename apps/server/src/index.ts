@@ -1288,6 +1288,16 @@ const http = createServer((req, res) => {
     return;
   }
   if (req.method === 'POST' && req.url === '/games') return createGameFromRequest(req, res);
+  if (req.method === 'GET' && req.url?.startsWith('/games/status?')) {
+    if (!bearerOk(req.headers.authorization)) return json(res, 401, { error: 'unauthorized' });
+    const ids = (new URL(req.url, 'http://local').searchParams.get('ids') ?? '').split(',').slice(0, 20);
+    const status: Record<string, { phase: Phase; players: number }> = {};
+    for (const id of ids) {
+      const game = games.get(id);
+      if (game) status[id] = { phase: game.phase, players: game.players.size };
+    }
+    return json(res, 200, { games: status });
+  }
   res.writeHead(404).end();
 });
 

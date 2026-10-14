@@ -7,9 +7,9 @@ export function LogoMark({ className = 'size-8' }: { className?: string }) {
     <svg viewBox="0 0 32 32" className={`shrink-0 ${className}`} aria-hidden="true">
       <defs>
         <linearGradient id={`${id}-bg`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#8466ff" />
-          <stop offset="0.55" stopColor="#5b34f0" />
-          <stop offset="1" stopColor="#3a1aa8" />
+          <stop offset="0" stopColor="#7b5cff" />
+          <stop offset="0.55" stopColor="#e9468f" />
+          <stop offset="1" stopColor="#ff8a3d" />
         </linearGradient>
         <radialGradient id={`${id}-shine`} cx="0.25" cy="0.15" r="0.75">
           <stop offset="0" stopColor="#fff" stopOpacity="0.32" />
@@ -20,7 +20,7 @@ export function LogoMark({ className = 'size-8' }: { className?: string }) {
       <rect width="32" height="32" rx="9" fill={`url(#${id}-shine)`} />
       <rect x="0.5" y="0.5" width="31" height="31" rx="8.5" fill="none" stroke="#fff" strokeOpacity="0.18" />
       <path d="M9.5 9.5h13M16 9.5v9.2" stroke="#fff" strokeWidth="3.6" strokeLinecap="round" />
-      <circle cx="16" cy="23.6" r="2.3" fill="#5eead4" />
+      <circle cx="16" cy="23.6" r="2.3" fill="#ffd84d" />
     </svg>
   );
 }

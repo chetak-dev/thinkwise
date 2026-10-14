@@ -42,3 +42,21 @@ export async function createLiveGame(quiz: PlayableQuiz, settings?: StartOptions
   if (res.status !== 201) throw new Error(`Game server returned ${res.status}`);
   return (await res.json()) as LiveGame;
 }
+
+export type LivePhase = 'lobby' | 'question' | 'reveal' | 'leaderboard' | 'finished';
+
+/** Which of these games the game server still holds. Empty when it can't answer quickly: a sleeping server runs no games. */
+export async function liveGameStatus(ids: string[]): Promise<Record<string, { phase: LivePhase; players: number }>> {
+  if (!REALTIME_SECRET || ids.length === 0) return {};
+  try {
+    const res = await fetch(`${REALTIME_HTTP_URL}/games/status?ids=${ids.map(encodeURIComponent).join(',')}`, {
+      headers: { authorization: `Bearer ${REALTIME_SECRET}` },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (!res.ok) return {};
+    return ((await res.json()) as { games: Record<string, { phase: LivePhase; players: number }> }).games;
+  } catch {
+    return {};
+  }
+}

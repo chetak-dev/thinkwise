@@ -26,7 +26,7 @@ import { isScored, type HostSettings, type ServerMessage } from '@thinkwise/shar
 import { Logo } from '@/components/Logo';
 import { ConnectionBadge } from '@/components/ConnectionBadge';
 import { Switch } from '@/components/Switch';
-import { Stage, formatPin } from '@/components/game/Stage';
+import { Stage } from '@/components/game/Stage';
 import { TRACKS } from '@/components/game/tracks';
 import { useStageSounds } from '@/components/game/useStageSounds';
 import { INITIAL_STAGE, stageReducer } from '@/lib/stage';
@@ -194,7 +194,7 @@ export function HostClient() {
         </div>
         {phase !== 'lobby' && phase !== 'connecting' && state.pin && (
           <span className="rounded-xl bg-surface-2 px-3 py-1.5 font-display font-bold tracking-wider tabular-nums">
-            PIN {formatPin(state.pin)}
+            PIN {state.pin}
           </span>
         )}
         <button

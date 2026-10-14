@@ -13,10 +13,6 @@ import { QuestionText } from '@/components/game/QuestionText';
 import { TimerRing } from '@/components/game/TimerRing';
 import type { StageState } from '@/lib/stage';
 
-export function formatPin(pin: string) {
-  return `${pin.slice(0, 3)} ${pin.slice(3)}`;
-}
-
 interface Flight {
   key: number;
   who: RecentAnswer;
@@ -189,7 +185,7 @@ export function Stage({
               className="mt-2 whitespace-nowrap font-display text-6xl font-bold tracking-[0.15em] sm:text-8xl"
               aria-label={pin ? `Game PIN ${pin.split('').join(' ')}` : 'Creating game'}
             >
-              {pin ? formatPin(pin) : '··· ···'}
+              {pin ?? '······'}
             </p>
             {onCopy && (
               <button
@@ -205,7 +201,7 @@ export function Stage({
           </div>
           <figure className="flex flex-col items-center gap-2 justify-self-center">
             <div
-              className={`${big ? 'size-60 p-4' : 'size-48 p-3.5'} rounded-3xl bg-white shadow-[0_18px_50px_-18px_rgba(12,10,29,.8)] ring-4 ring-white/25`}
+              className={`${big ? 'size-72 p-5' : 'size-56 p-4'} rounded-3xl bg-white shadow-[0_18px_50px_-18px_rgba(12,10,29,.8)] ring-4 ring-white/25`}
             >
               {qr && (
                 // eslint-disable-next-line @next/next/no-img-element

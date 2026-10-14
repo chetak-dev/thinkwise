@@ -456,6 +456,16 @@ test('POST /games: secret required, quiz validated, game playable without leakin
   h4.send({ t: 'host:resume', gameId: plain.gameId, hostToken: plain.hostToken });
   assert.equal((await h4.next('settings')).settings.autoAdvance, true, 'live games auto-advance by default');
 
+  // The web app asks which saved sessions are still running, to offer "Resume".
+  const statusUrl = `http://127.0.0.1:${PORT}/games/status?ids=${created.gameId},${plain.gameId},no-such-game`;
+  assert.equal((await fetch(statusUrl)).status, 401, 'status needs the shared secret');
+  const status = (await (await fetch(statusUrl, { headers: { authorization: auth } })).json()) as {
+    games: Record<string, { phase: string; players: number }>;
+  };
+  assert.deepEqual(Object.keys(status.games).sort(), [created.gameId, plain.gameId].sort());
+  assert.equal(status.games[plain.gameId]?.phase, 'lobby');
+  assert.notEqual(status.games[created.gameId]?.phase, 'lobby', 'the started game reports its stage');
+
   // Events without late entry close the doors when the quiz starts; players already in can rejoin.
   assert.equal((await post({ quiz, settings: { lockOnStart: 'yes' } }, auth)).status, 422);
   const closed = (await (await post({ quiz, settings: { lockOnStart: true, autoAdvance: false } }, auth)).json()) as typeof created;

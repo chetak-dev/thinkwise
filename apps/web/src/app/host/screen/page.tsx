@@ -7,7 +7,7 @@ import { Sparkles, Users, Volume2, VolumeX } from 'lucide-react';
 import type { ServerMessage } from '@thinkwise/shared';
 import { Logo } from '@/components/Logo';
 import { ConnectionBadge } from '@/components/ConnectionBadge';
-import { Stage, formatPin } from '@/components/game/Stage';
+import { Stage } from '@/components/game/Stage';
 import { useStageSounds } from '@/components/game/useStageSounds';
 import { INITIAL_STAGE, stageReducer } from '@/lib/stage';
 import { useGameSocket } from '@/lib/useGameSocket';
@@ -81,7 +81,7 @@ function Projector() {
           </button>
           {state.phase !== 'lobby' && state.phase !== 'connecting' && state.pin && (
             <span className="rounded-xl bg-surface-2 px-3 py-1.5 font-display font-bold tracking-wider">
-              PIN {formatPin(state.pin)}
+              PIN {state.pin}
             </span>
           )}
           <span
