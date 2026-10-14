@@ -294,6 +294,8 @@ export function HostClient() {
             </div>
           )}
 
+          {phase === 'self' && <div className="space-y-2">{endControls}</div>}
+
           {phase !== 'finished' && phase !== 'connecting' && (
             <div className="space-y-3 rounded-2xl bg-surface-2 p-4">
               <Switch
@@ -302,7 +304,7 @@ export function HostClient() {
                 label="Lock lobby"
                 description="Keep latecomers out once you’re ready"
               />
-              {stage.rules.showLeaderboard && (
+              {settings.mode === 'live' && stage.rules.showLeaderboard && (
                 <Switch
                   checked={settings.leaderboardAfterEach}
                   onChange={(next) => updateSettings({ leaderboardAfterEach: next })}
@@ -310,18 +312,22 @@ export function HostClient() {
                   description="Rankings appear 4 s after the answer is revealed"
                 />
               )}
-              <Switch
-                checked={settings.liveCounts}
-                onChange={(next) => updateSettings({ liveCounts: next })}
-                label="Live answer count"
-                description="Show totals, bars and who just answered while the clock runs"
-              />
-              <Switch
-                checked={settings.autoAdvance}
-                onChange={(next) => updateSettings({ autoAdvance: next })}
-                label="Auto-advance"
-                description="Move on by itself after the reveal and leaderboard"
-              />
+              {settings.mode === 'live' && (
+                <>
+                  <Switch
+                    checked={settings.liveCounts}
+                    onChange={(next) => updateSettings({ liveCounts: next })}
+                    label="Live answer count"
+                    description="Show totals, bars and who just answered while the clock runs"
+                  />
+                  <Switch
+                    checked={settings.autoAdvance}
+                    onChange={(next) => updateSettings({ autoAdvance: next })}
+                    label="Auto-advance"
+                    description="Move on by itself after the reveal and leaderboard"
+                  />
+                </>
+              )}
             </div>
           )}
 

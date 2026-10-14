@@ -474,6 +474,38 @@ export function Stage({
     return <Leaderboard title="Leaderboard" top={state.top} large={big} />;
   }
 
+  if (phase === 'self') {
+    const progress = state.selfProgress;
+    const percent = progress?.percent ?? 0;
+    return (
+      <div className="mx-auto w-full max-w-4xl space-y-8">
+        <div className={`rounded-3xl p-6 ${big ? 'border border-white/10 bg-white/[.07] backdrop-blur-xl' : 'bg-surface shadow-soft'}`}>
+          <p className="text-sm font-semibold text-muted">Self-paced in progress</p>
+          <div className="mt-3 flex flex-wrap items-end gap-x-6 gap-y-1">
+            <p className={`font-display font-bold tabular-nums ${big ? 'text-7xl' : 'text-5xl'}`}>{percent}%</p>
+            <p className="pb-2 text-muted">
+              average progress · {progress?.finished ?? 0} of {progress?.total ?? players.length} finished
+            </p>
+          </div>
+          <div
+            className="mt-4 h-4 overflow-hidden rounded-full bg-surface-2"
+            role="progressbar"
+            aria-label="Average progress"
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div
+              className="h-full rounded-full bg-[linear-gradient(90deg,#6d4aff,#ff5d73)] transition-all duration-700"
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+        </div>
+        {rules.showLeaderboard && <Leaderboard title="Live leaderboard" top={progress?.top ?? []} compact large={big} />}
+      </div>
+    );
+  }
+
   if (phase === 'finished') {
     return (
       <div className="mx-auto flex w-full max-w-4xl flex-col items-center gap-8 py-6 text-center">

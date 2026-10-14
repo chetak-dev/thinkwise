@@ -17,7 +17,7 @@ import {
   setArchived,
   setFavourite,
 } from '@thinkwise/db';
-import { CSV_MAX_BYTES, csvToQuestions, toPlayable } from '@thinkwise/shared';
+import { CSV_MAX_BYTES, csvToQuestions, toPlayable, type GameMode } from '@thinkwise/shared';
 import { randomUUID } from 'node:crypto';
 import { requireUser } from '@/lib/session';
 import { createLiveGame } from '@/lib/realtime';
@@ -116,20 +116,28 @@ export async function publishQuizAction(id: string): Promise<PublishActionResult
   return { ok: true, publishedAt: result.publishedAt.toISOString() };
 }
 
-export async function hostQuizAction(id: string, options?: { autoAdvance?: unknown }): Promise<HostResult> {
+/** Untrusted options from the start dialog, reduced to what the game server accepts. */
+function startOptions(options?: { autoAdvance?: unknown; mode?: unknown }) {
+  const mode: GameMode = options?.mode === 'self' ? 'self' : 'live';
+  return { autoAdvance: mode === 'live' && options?.autoAdvance === true, mode };
+}
+
+export async function hostQuizAction(id: string, options?: { autoAdvance?: unknown; mode?: unknown }): Promise<HostResult> {
   const user = await requireUser();
   const quiz = await getQuiz(getDb(), user.id, id);
   if (!quiz) return { ok: false, error: 'This quiz no longer exists.' };
   const check = toPlayable(quiz.title, quiz.questions, quiz.settings);
   if (!check.ok) return { ok: false, error: notReadyMessage(check, 'hosting'), problems: check.problems };
   try {
-    const game = await createLiveGame(check.quiz, { autoAdvance: options?.autoAdvance === true });
+    const start = startOptions(options);
+    const game = await createLiveGame(check.quiz, start);
     await createGameSession(getDb(), user, {
       gameId: game.gameId,
       pin: game.pin,
       quizId: id,
       title: check.quiz.title,
       questionCount: check.quiz.questions.length,
+      mode: start.mode,
     });
     return { ok: true, gameId: game.gameId, hostToken: game.hostToken };
   } catch {
@@ -138,18 +146,20 @@ export async function hostQuizAction(id: string, options?: { autoAdvance?: unkno
 }
 
 /** Hosts the published copy of a quiz shared with (or owned by) the signed-in host. */
-export async function hostPublishedQuizAction(id: string, options?: { autoAdvance?: unknown }): Promise<HostResult> {
+export async function hostPublishedQuizAction(id: string, options?: { autoAdvance?: unknown; mode?: unknown }): Promise<HostResult> {
   const user = await requireUser();
   const quiz = await getHostablePublished(getDb(), user.id, id);
   if (!quiz) return { ok: false, error: 'This quiz isn’t available to host.' };
   try {
-    const game = await createLiveGame(quiz, { autoAdvance: options?.autoAdvance === true });
+    const start = startOptions(options);
+    const game = await createLiveGame(quiz, start);
     await createGameSession(getDb(), user, {
       gameId: game.gameId,
       pin: game.pin,
       quizId: id,
       title: quiz.title,
       questionCount: quiz.questions.length,
+      mode: start.mode,
     });
     return { ok: true, gameId: game.gameId, hostToken: game.hostToken };
   } catch {

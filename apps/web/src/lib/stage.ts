@@ -6,13 +6,14 @@ import type {
   PublicQuestion,
   PublicRules,
   RecentAnswer,
+  SelfProgress,
   ServerMessage,
   Standing,
 } from '@thinkwise/shared';
 import { DEFAULT_THEME } from '@thinkwise/shared';
 import { clockTimer, type ClockedTimer } from '@/components/game/TimerRing';
 
-export type StagePhase = 'connecting' | 'lobby' | 'question' | 'reveal' | 'leaderboard' | 'finished';
+export type StagePhase = 'connecting' | 'lobby' | 'question' | 'reveal' | 'leaderboard' | 'self' | 'finished';
 
 export interface StageProgress {
   answered: number;
@@ -40,6 +41,8 @@ export interface StageState {
   explanation: string | null;
   top: Standing[];
   podium: Standing[];
+  /** Self-paced games: how far the room has got. */
+  selfProgress: SelfProgress | null;
   celebration: number;
 }
 
@@ -59,7 +62,7 @@ export const INITIAL_STAGE: StageState = {
   rules: DEFAULT_RULES,
   players: [],
   locked: false,
-  settings: { leaderboardAfterEach: true, liveCounts: true, autoAdvance: false, soundtrack: 'ocean-drive' },
+  settings: { leaderboardAfterEach: true, liveCounts: true, autoAdvance: false, soundtrack: 'ocean-drive', mode: 'live' },
   phase: 'connecting',
   question: null,
   timer: null,
@@ -70,6 +73,7 @@ export const INITIAL_STAGE: StageState = {
   explanation: null,
   top: [],
   podium: [],
+  selfProgress: null,
   celebration: 0,
 };
 
@@ -133,6 +137,8 @@ export function stageReducer(state: StageState, msg: ServerMessage): StageState 
       };
     case 'leaderboard':
       return { ...state, phase: 'leaderboard', top: msg.top };
+    case 'self:progress':
+      return { ...state, phase: 'self', selfProgress: msg.progress };
     case 'final':
       return { ...state, phase: 'finished', podium: msg.podium, celebration: state.celebration + 1 };
     default:

@@ -36,6 +36,10 @@ export const TRACK_IDS = [
 
 export type TrackId = (typeof TRACK_IDS)[number];
 
+export const GAME_MODES = ['live', 'self'] as const;
+/** live: the host moves everyone through each question; self: each player goes at their own pace. */
+export type GameMode = (typeof GAME_MODES)[number];
+
 const Pin = z.string().regex(/^\d{6}$/);
 const Token = z.string().min(10).max(100);
 const Nickname = z
@@ -70,6 +74,8 @@ export const ClientMessage = z.discriminatedUnion('t', [
   z.object({ t: z.literal('host:next') }),
   z.object({ t: z.literal('host:end') }),
   z.object({ t: z.literal('pin:check'), pin: Pin }),
+  /** Self-paced: move on to the next question after seeing the result. */
+  z.object({ t: z.literal('player:next') }),
   z.object({ t: z.literal('player:join'), pin: Pin, nickname: Nickname, avatar: z.enum(AVATARS) }),
   z.object({ t: z.literal('player:resume'), pin: Pin, playerToken: Token }),
   z.object({
@@ -134,6 +140,17 @@ export interface HostSettings {
   liveCounts: boolean;
   autoAdvance: boolean;
   soundtrack: TrackId;
+  /** Chosen when the lobby opens; can't change during a game. */
+  mode: GameMode;
+}
+
+/** Self-paced games: how far the room has got, for the host and projector. */
+export interface SelfProgress {
+  /** 0–100: questions completed by all players out of all their questions. */
+  percent: number;
+  finished: number;
+  total: number;
+  top: Standing[];
 }
 
 export interface TimerState {
@@ -207,6 +224,7 @@ export type ServerMessage =
       avatar: string;
       score: number;
       rules: PublicRules;
+      mode?: GameMode;
     }
   | { t: 'lobby:count'; count: number }
   | { t: 'soundtrack'; track: TrackId }
@@ -243,12 +261,15 @@ export type ServerMessage =
       explanation?: string;
     } & AnswerKey)
   | { t: 'leaderboard'; top: Standing[]; me?: { rank: number; score: number } }
+  | { t: 'self:progress'; progress: SelfProgress }
   | {
       t: 'final';
       podium: Standing[];
       total: number;
       questionCount: number;
       me?: { rank: number; score: number; correctCount: number };
+      /** Self-paced: this player is done but the host hasn't ended the game yet. */
+      waiting?: boolean;
     }
   | { t: 'kicked' }
   | { t: 'error'; code: ErrorCode; message: string };

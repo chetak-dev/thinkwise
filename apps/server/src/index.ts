@@ -16,6 +16,7 @@ import {
   type AnswerKey,
   type CloudWord,
   type ErrorCode,
+  type GameMode,
   type GameResults,
   type HostSettings,
   type LobbyPlayer,
@@ -23,6 +24,7 @@ import {
   type PublicQuestion,
   type PublicRules,
   type RecentAnswer,
+  type SelfProgress,
   type ServerMessage,
   type Standing,
   type TimerState,
@@ -85,6 +87,11 @@ interface Player {
   streak: number;
   correctCount: number;
   answers: Map<number, Answer>;
+  /** Self-paced games: this player's own question, phase and clock. */
+  selfIndex: number;
+  selfPhase: 'idle' | 'question' | 'result' | 'done';
+  selfEndsAt: number | null;
+  selfTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface Game {
@@ -115,6 +122,8 @@ interface Game {
   answered: number;
   recent: RecentAnswer[];
   progressDirty: boolean;
+  /** Self-paced: someone moved on, so hosts need fresh progress. */
+  selfDirty: boolean;
   standings: Standing[];
   ranks: Map<string, number>;
   closeTimer: ReturnType<typeof setTimeout> | null;
@@ -262,10 +271,10 @@ function progressMsg(game: Game): ServerMessage {
   };
 }
 
-function publicQuestion(game: Game): PublicQuestion {
-  const q = game.quiz.questions[game.qIndex]!;
+function publicQuestion(game: Game, index = game.qIndex): PublicQuestion {
+  const q = game.quiz.questions[index]!;
   return {
-    index: game.qIndex,
+    index,
     total: game.quiz.questions.length,
     type: q.type,
     text: q.text,
@@ -348,13 +357,13 @@ function publicAnswer(answer: Answer): PlayerAnswer {
   return { choices: answer.choices };
 }
 
-function resultMsg(game: Game, player: Player, ranks: Map<string, number>): ServerMessage {
-  const q = game.quiz.questions[game.qIndex]!;
+function resultMsg(game: Game, player: Player, rank: number, index = game.qIndex): ServerMessage {
+  const q = game.quiz.questions[index]!;
   const show = game.quiz.rules.showCorrect;
-  const answer = player.answers.get(game.qIndex);
+  const answer = player.answers.get(index);
   return {
     t: 'result',
-    index: game.qIndex,
+    index,
     correct: show ? q.correct : [],
     ...answerKey(q, show),
     answer: answer ? publicAnswer(answer) : null,
@@ -362,7 +371,7 @@ function resultMsg(game: Game, player: Player, ranks: Map<string, number>): Serv
     isCorrect: answer?.isCorrect ?? false,
     points: answer?.points ?? 0,
     score: player.score,
-    rank: ranks.get(player.id) ?? game.standings.length,
+    rank,
     total: game.players.size,
     ...(show && q.explanation ? { explanation: q.explanation } : {}),
   };
@@ -389,11 +398,108 @@ function finalMsg(game: Game, player?: Player): ServerMessage {
 
 // ---------- game flow ----------
 
+const isSelf = (game: Game) => game.settings.mode === 'self';
+
+function byScore(a: Player, b: Player) {
+  return b.score - a.score || a.joinedAt - b.joinedAt;
+}
+
+/** Current place without sorting everyone; used for instant self-paced feedback. */
+function liveRank(game: Game, player: Player) {
+  let rank = 1;
+  for (const p of game.players.values()) if (p !== player && byScore(p, player) < 0) rank += 1;
+  return rank;
+}
+
+function selfTimerState(game: Game, player: Player): TimerState {
+  const now = Date.now();
+  return {
+    endsAt: player.selfEndsAt,
+    durationMs: game.quiz.questions[player.selfIndex]!.timeLimitMs,
+    remainingMs: player.selfEndsAt === null ? 0 : Math.max(0, player.selfEndsAt - now),
+    paused: false,
+    serverNow: now,
+  };
+}
+
+function clearPlayerTimer(player: Player) {
+  if (player.selfTimer) clearTimeout(player.selfTimer);
+  player.selfTimer = null;
+}
+
+function startSelfQuestion(game: Game, player: Player, index: number) {
+  clearPlayerTimer(player);
+  const q = game.quiz.questions[index]!;
+  player.selfIndex = index;
+  player.selfPhase = 'question';
+  player.selfEndsAt = Date.now() + q.timeLimitMs;
+  player.selfTimer = setTimeout(() => closeSelfQuestion(game, player), q.timeLimitMs + game.quiz.rules.graceMs);
+  game.selfDirty = true;
+  send(player.socket, { t: 'question', question: publicQuestion(game, index), timer: selfTimerState(game, player), myAnswer: null });
+}
+
+/** Answered or out of time: the player sees their result straight away. */
+function closeSelfQuestion(game: Game, player: Player) {
+  if (player.selfPhase !== 'question') return;
+  clearPlayerTimer(player);
+  player.selfPhase = 'result';
+  player.selfEndsAt = null;
+  if (!player.answers.has(player.selfIndex)) player.streak = 0;
+  game.selfDirty = true;
+  send(player.socket, resultMsg(game, player, liveRank(game, player), player.selfIndex));
+}
+
+function selfDoneMsg(game: Game, player: Player): ServerMessage {
+  return {
+    ...(finalMsg(game) as Extract<ServerMessage, { t: 'final' }>),
+    podium: [],
+    me: { rank: liveRank(game, player), score: player.score, correctCount: player.correctCount },
+    waiting: true,
+  };
+}
+
+function nextSelfQuestion(game: Game, player: Player) {
+  if (game.phase !== 'question' || player.selfPhase !== 'result') return;
+  if (player.selfIndex + 1 < game.quiz.questions.length) return startSelfQuestion(game, player, player.selfIndex + 1);
+  player.selfPhase = 'done';
+  game.selfDirty = true;
+  send(player.socket, selfDoneMsg(game, player));
+}
+
+function selfProgress(game: Game): SelfProgress {
+  const n = game.quiz.questions.length;
+  let completed = 0;
+  let finished = 0;
+  for (const p of game.players.values()) {
+    if (p.selfPhase === 'done') {
+      completed += n;
+      finished += 1;
+    } else if (p.selfPhase === 'result') completed += p.selfIndex + 1;
+    else if (p.selfPhase === 'question') completed += p.selfIndex;
+  }
+  const total = game.players.size;
+  const top = [...game.players.values()]
+    .sort(byScore)
+    .slice(0, LEADERBOARD_SIZE)
+    .map((p, i) => ({ id: p.id, nickname: p.nickname, avatar: p.avatar, score: p.score, rank: i + 1 }));
+  return { percent: total && n ? Math.round((completed / (total * n)) * 100) : 0, finished, total, top };
+}
+
+function startSelfPaced(game: Game) {
+  game.phase = 'question';
+  game.startedAt = Date.now();
+  game.lobbyDirty = true;
+  for (const p of game.players.values()) startSelfQuestion(game, p, 0);
+  game.selfDirty = false;
+  toHosts(game, { t: 'self:progress', progress: selfProgress(game) });
+}
+
 function clearTimers(game: Game) {
   if (game.closeTimer) clearTimeout(game.closeTimer);
   if (game.phaseTimer) clearTimeout(game.phaseTimer);
   game.closeTimer = null;
   game.phaseTimer = null;
+  for (const p of game.players.values()) clearPlayerTimer(p);
 }
 
 function scheduleClose(game: Game) {
@@ -506,20 +612,26 @@ function readAnswer(q: Quiz['questions'][number], input: AnswerInput): ReadAnswe
 }
 
 function submitAnswer(ws: WebSocket, game: Game, player: Player, index: number, input: AnswerInput) {
-  if (game.phase !== 'question' || index !== game.qIndex || player.answers.has(index)) return;
+  const self = isSelf(game);
+  const current = self ? player.selfIndex : game.qIndex;
+  if (game.phase !== 'question' || index !== current || player.answers.has(index)) return;
+  if (self && player.selfPhase !== 'question') return;
   const q = game.quiz.questions[index]!;
   const read = readAnswer(q, input);
   if (!read) return fail(ws, 'bad_request', 'Invalid answer.');
-  if (game.endsAt !== null && Date.now() > game.endsAt + game.quiz.rules.graceMs) return;
+  const endsAt = self ? player.selfEndsAt : game.endsAt;
+  if (endsAt !== null && Date.now() > endsAt + game.quiz.rules.graceMs) return;
 
-  const elapsed = Math.min(game.durationMs, Math.max(0, game.durationMs - remainingMs(game)));
+  const durationMs = self ? q.timeLimitMs : game.durationMs;
+  const remaining = self ? Math.max(0, (player.selfEndsAt ?? 0) - Date.now()) : remainingMs(game);
+  const elapsed = Math.min(durationMs, Math.max(0, durationMs - remaining));
   const { isCorrect } = read;
   const credit = read.credit ?? (isCorrect ? 1 : 0);
   const rules = game.quiz.rules;
   let points = 0;
   if (credit > 0) {
     // Speed scoring: 50-100% of the points by speed. Streak bonus: +10% per prior consecutive correct answer.
-    const speedFactor = rules.scoring === 'speed' ? 1 - 0.5 * (elapsed / game.durationMs) : 1;
+    const speedFactor = rules.scoring === 'speed' ? 1 - 0.5 * (elapsed / durationMs) : 1;
     const streakFactor = rules.streakBonus && isCorrect ? 1 + Math.min(player.streak, MAX_STREAK_STEPS) * 0.1 : 1;
     points = Math.round(q.points * credit * speedFactor * streakFactor);
   }
@@ -536,6 +648,10 @@ function submitAnswer(ws: WebSocket, game: Game, player: Player, index: number, 
   player.score += points;
   const answer: Answer = { ...read, credit, points, timeMs: Math.round(elapsed) };
   player.answers.set(index, answer);
+  if (self) {
+    send(ws, { t: 'answer:ok', index, answer: publicAnswer(answer) });
+    return closeSelfQuestion(game, player);
+  }
   if (q.type === 'rating') {
     const slot = read.number! - q.ratingMin;
     game.counts[slot] = (game.counts[slot] ?? 0) + 1;
@@ -559,7 +675,7 @@ function submitAnswer(ws: WebSocket, game: Game, player: Player, index: number, 
 }
 
 function closeIfEveryoneAnswered(game: Game) {
-  if (game.phase !== 'question') return;
+  if (game.phase !== 'question' || isSelf(game)) return;
   let online = 0;
   for (const p of game.players.values()) {
     if (!p.socket) continue;
@@ -582,7 +698,7 @@ function closeQuestion(game: Game) {
   }
   computeStandings(game);
   toHosts(game, revealMsg(game));
-  for (const p of game.players.values()) send(p.socket, resultMsg(game, p, game.ranks));
+  for (const p of game.players.values()) send(p.socket, resultMsg(game, p, rankOf(game, p)));
 
   if (game.settings.leaderboardAfterEach && game.quiz.rules.showLeaderboard) {
     game.phaseTimer = setTimeout(() => showLeaderboard(game), REVEAL_TO_LEADERBOARD_MS);
@@ -633,7 +749,7 @@ function resultsPayload(game: Game): GameResults {
     status: game.startedAt === null ? 'abandoned' : 'ended',
     startedAt: game.startedAt,
     endedAt: Date.now(),
-    questionsAsked: game.startedAt === null ? 0 : Math.max(0, game.qIndex + 1),
+    questionsAsked: game.startedAt === null ? 0 : isSelf(game) ? game.quiz.questions.length : Math.max(0, game.qIndex + 1),
     questions: game.quiz.questions.map((q) => ({
       type: q.type,
       text: q.text,
@@ -711,6 +827,10 @@ function syncHost(ws: WebSocket, game: Game, asScreen = false) {
   }
   send(ws, { t: 'settings', settings: game.settings });
   send(ws, { t: 'lobby', locked: game.locked, players: lobbyPlayers(game) });
+  if (isSelf(game) && game.phase === 'question') {
+    send(ws, { t: 'self:progress', progress: selfProgress(game) });
+    return;
+  }
   switch (game.phase) {
     case 'question':
       send(ws, { t: 'question', question: publicQuestion(game), timer: timerState(game) });
@@ -740,8 +860,21 @@ function syncPlayer(game: Game, player: Player) {
     avatar: player.avatar,
     score: player.score,
     rules: publicRules(game),
+    mode: game.settings.mode,
   });
   send(ws, { t: 'soundtrack', track: game.settings.soundtrack });
+  if (isSelf(game) && game.phase === 'question') {
+    if (player.selfPhase === 'idle') return startSelfQuestion(game, player, 0);
+    if (player.selfPhase === 'done') return send(ws, selfDoneMsg(game, player));
+    send(ws, {
+      t: 'question',
+      question: publicQuestion(game, player.selfIndex),
+      timer: selfTimerState(game, player),
+      myAnswer: null,
+    });
+    if (player.selfPhase === 'result') send(ws, resultMsg(game, player, liveRank(game, player), player.selfIndex));
+    return;
+  }
   switch (game.phase) {
     case 'lobby':
       send(ws, { t: 'lobby:count', count: game.players.size });
@@ -758,8 +891,7 @@ function syncPlayer(game: Game, player: Player) {
     }
     case 'reveal': {
       send(ws, { t: 'question', question: publicQuestion(game), timer: timerState(game), myAnswer: null });
-      const ranks = new Map(game.standings.map((s) => [s.id, s.rank]));
-      send(ws, resultMsg(game, player, ranks));
+      send(ws, resultMsg(game, player, rankOf(game, player)));
       break;
     }
     case 'leaderboard':
@@ -791,6 +923,10 @@ function flush() {
     if (game.progressDirty && game.phase === 'question') {
       game.progressDirty = false;
       if (game.settings.liveCounts) toHosts(game, progressMsg(game));
+    }
+    if (game.selfDirty && game.phase === 'question' && isSelf(game)) {
+      game.selfDirty = false;
+      toHosts(game, { t: 'self:progress', progress: selfProgress(game) });
     }
   }
 }
@@ -850,7 +986,7 @@ function attachPlayer(ws: WebSocket, conn: Connection, game: Game, player: Playe
   syncPlayer(game, player);
 }
 
-function createGame(ws: WebSocket | null, quiz: Quiz = SAMPLE_QUIZ): Game {
+function createGame(ws: WebSocket | null, quiz: Quiz = SAMPLE_QUIZ, mode: GameMode = 'live'): Game {
   const game: Game = {
     id: randomUUID(),
     pin: newPin(),
@@ -871,6 +1007,7 @@ function createGame(ws: WebSocket | null, quiz: Quiz = SAMPLE_QUIZ): Game {
       liveCounts: true,
       autoAdvance: false,
       soundtrack: 'ocean-drive',
+      mode,
     },
     phase: 'lobby',
     qIndex: -1,
@@ -882,6 +1019,7 @@ function createGame(ws: WebSocket | null, quiz: Quiz = SAMPLE_QUIZ): Game {
     answered: 0,
     recent: [],
     progressDirty: false,
+    selfDirty: false,
     standings: [],
     ranks: new Map(),
     closeTimer: null,
@@ -903,6 +1041,9 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
     return fail(ws, 'not_authorized', 'Only the host can do that.');
   }
   const game = role.kind === 'host' ? role.game : null;
+  // Self-paced players drive their own questions; these live-only controls do nothing there.
+  const liveOnly = ['host:reveal', 'host:pause', 'host:extend', 'host:leaderboard', 'host:next'];
+  if (game && isSelf(game) && liveOnly.includes(msg.t)) return;
 
   switch (msg.t) {
     case 'host:create': {
@@ -945,9 +1086,11 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
     case 'host:kick': {
       const player = game!.players.get(msg.playerId);
       if (!player) return;
+      clearPlayerTimer(player);
       game!.players.delete(player.id);
       game!.playersByToken.delete(player.token);
       game!.lobbyDirty = true;
+      game!.selfDirty = true;
       if (player.socket) {
         send(player.socket, { t: 'kicked' });
         player.socket.close(CLOSE_KICKED, 'removed by host');
@@ -968,6 +1111,7 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
     case 'host:start':
       if (game!.phase !== 'lobby') return fail(ws, 'bad_request', 'The game has already started.');
       if (game!.players.size === 0) return fail(ws, 'bad_request', 'Wait for at least one player.');
+      if (isSelf(game!)) return startSelfPaced(game!);
       game!.startedAt = Date.now();
       return startQuestion(game!, 0);
 
@@ -1017,6 +1161,10 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
         streak: 0,
         correctCount: 0,
         answers: new Map(),
+        selfIndex: -1,
+        selfPhase: 'idle',
+        selfEndsAt: null,
+        selfTimer: null,
       };
       found.players.set(player.id, player);
       found.playersByToken.set(player.token, player);
@@ -1034,6 +1182,11 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
     case 'player:answer':
       if (role.kind !== 'player') return fail(ws, 'not_authorized', 'Join the game first.');
       return submitAnswer(ws, role.game, role.player, msg.index, msg);
+
+    case 'player:next':
+      if (role.kind !== 'player') return fail(ws, 'not_authorized', 'Join the game first.');
+      if (!isSelf(role.game)) return;
+      return nextSelfQuestion(role.game, role.player);
   }
 }
 
@@ -1106,9 +1259,11 @@ function createGameFromRequest(req: IncomingMessage, res: import('node:http').Se
     if (quiz.questions.some((q) => q.correct[0]! >= q.options.length)) return json(res, 422, { error: 'invalid_quiz' });
     const autoAdvance = (body as { settings?: { autoAdvance?: unknown } }).settings?.autoAdvance;
     if (autoAdvance !== undefined && typeof autoAdvance !== 'boolean') return json(res, 422, { error: 'invalid_settings' });
-    const game = createGame(null, quiz);
+    const mode = (body as { settings?: { mode?: unknown } }).settings?.mode ?? 'live';
+    if (mode !== 'live' && mode !== 'self') return json(res, 422, { error: 'invalid_settings' });
+    const game = createGame(null, quiz, mode);
     game.report = true;
-    if (autoAdvance !== undefined) game.settings.autoAdvance = autoAdvance;
+    if (autoAdvance !== undefined && mode === 'live') game.settings.autoAdvance = autoAdvance;
     json(res, 201, { gameId: game.id, pin: game.pin, hostToken: game.hostToken });
   });
 }

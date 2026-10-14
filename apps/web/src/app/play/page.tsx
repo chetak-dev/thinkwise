@@ -16,6 +16,7 @@ import {
   parseNumberAnswer,
   type AnswerKey,
   type Avatar,
+  type GameMode,
   type PlayerAnswer,
   type PublicQuestion,
   type PublicRules,
@@ -488,6 +489,7 @@ function QuestionStage({
   lowData,
   showRank,
   onSubmit,
+  onNext,
 }: {
   question: PublicQuestion;
   timer: ClockedTimer | null;
@@ -498,6 +500,8 @@ function QuestionStage({
   lowData: boolean;
   showRank: boolean;
   onSubmit: (answer: AnswerInput) => void;
+  /** Self-paced: the player moves on when ready. */
+  onNext?: () => void;
 }) {
   const remaining = useRemainingMs(timer);
   const live = !result;
@@ -593,6 +597,11 @@ function QuestionStage({
             </div>
           )}
           <AnswerSummary question={question} t={t} answer={result.answer} correct={result.correct} answerKey={result} />
+          {onNext && (
+            <button type="button" onClick={onNext} autoFocus className={SUBMIT_CLASS}>
+              {t.nextQuestion}
+            </button>
+          )}
         </div>
       ) : myAnswer !== null ? (
         <div className="space-y-4">
@@ -630,6 +639,11 @@ function FinalStage({ final, me, t, rules }: { final: Final; me: Me; t: Strings;
         {medal}
       </div>
       <h2 className="font-display text-3xl font-bold">{t.allDone}</h2>
+      {final.waiting && (
+        <p className="animate-pulse font-semibold text-muted" role="status">
+          {t.waitingOthers}
+        </p>
+      )}
       {rules.completionMessage && <p className="max-w-sm whitespace-pre-line font-semibold">{rules.completionMessage}</p>}
       {mine && (
         <div className={`grid w-full gap-3 ${ranked ? 'grid-cols-3' : 'grid-cols-2'}`}>
@@ -704,6 +718,7 @@ function PlayFlow() {
   const [board, setBoard] = useState<{ top: Standing[]; me?: { rank: number; score: number } } | null>(null);
   const [final, setFinal] = useState<Final | null>(null);
   const [rules, setRules] = useState<PublicRules>(DEFAULT_RULES);
+  const [mode, setMode] = useState<GameMode>('live');
   const [track, setTrack] = useState<TrackId | null>(null);
 
   useEffect(() => {
@@ -751,6 +766,7 @@ function PlayFlow() {
           setMe({ id: msg.playerId, nickname: msg.nickname, avatar: msg.avatar });
           setScore(msg.score);
           setRules(msg.rules);
+          setMode(msg.mode ?? 'live');
           setError(null);
           setStep('lobby');
           break;
@@ -1057,6 +1073,7 @@ function PlayFlow() {
                 lowData={prefs.lowData}
                 showRank={rules.showLeaderboard}
                 onSubmit={submitAnswer}
+                onNext={mode === 'self' ? () => send({ t: 'player:next' }) : undefined}
               />
             )}
 

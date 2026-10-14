@@ -1032,6 +1032,103 @@ test('word clouds group responses live, enforce the word limit and never score',
   for (const x of [h, a.c, b.c, c.c]) x.close();
 });
 
+test('self-paced: each player moves on alone with instant results; the host sees progress and ends it', async () => {
+  const quiz = {
+    title: 'At your own pace',
+    rules: { scoring: 'accuracy' },
+    questions: [
+      { type: 'mc', text: 'One?', options: ['A', 'B'], correct: [0], timeLimitMs: 30_000, points: 1000 },
+      { type: 'text', text: 'Gold?', options: [], correct: [], accepted: ['Au'], timeLimitMs: 30_000, points: 1000 },
+    ],
+  };
+  const post = (settings: unknown) =>
+    fetch(`http://127.0.0.1:${PORT}/games`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer dev-only-realtime-secret' },
+      body: JSON.stringify({ quiz, settings }),
+    });
+  assert.equal((await post({ mode: 'turbo' })).status, 422, 'unknown modes are rejected');
+  const created = (await (await post({ mode: 'self', autoAdvance: true })).json()) as { gameId: string; pin: string; hostToken: string };
+  const h = new Client();
+  await h.open();
+  h.send({ t: 'host:resume', gameId: created.gameId, hostToken: created.hostToken });
+  await h.next('host:ready');
+  const settings = await h.next('settings');
+  assert.deepEqual([settings.settings.mode, settings.settings.autoAdvance], ['self', false], 'auto-advance only applies to live games');
+  const a = await player(created.pin, 'Asha');
+  const b = await player(created.pin, 'Bilal');
+  assert.equal(a.ready.mode, 'self');
+
+  let markA = a.c.mark();
+  const markB = b.c.mark();
+  let markH = h.mark();
+  h.send({ t: 'host:start' });
+  const start = await h.next('self:progress', markH);
+  assert.deepEqual([start.progress.percent, start.progress.finished, start.progress.total], [0, 0, 2]);
+  assert.equal((await a.c.next('question', markA)).question.index, 0);
+  assert.equal((await b.c.next('question', markB)).question.index, 0);
+
+  h.send({ t: 'host:next' });
+  h.send({ t: 'host:reveal' });
+  await sleep(300);
+  assert.ok(!h.inbox.slice(markH).some((m) => m.t === 'question' || m.t === 'reveal'), 'live-only controls do nothing');
+
+  // Asha races ahead while Bilal is still on question 1.
+  markA = a.c.mark();
+  a.c.send({ t: 'player:answer', index: 0, choice: 0 });
+  const r1 = await a.c.next('result', markA);
+  assert.deepEqual([r1.index, r1.isCorrect, r1.points, r1.rank], [0, true, 1000, 1], 'feedback arrives at once');
+  markA = a.c.mark();
+  a.c.send({ t: 'player:answer', index: 1, text: 'Au' });
+  await sleep(200);
+  assert.ok(!a.c.inbox.slice(markA).some((m) => m.t === 'result'), 'cannot answer ahead of the current question');
+  a.c.send({ t: 'player:next' });
+  assert.equal((await a.c.next('question', markA)).question.index, 1);
+  markA = a.c.mark();
+  a.c.send({ t: 'player:answer', index: 1, text: 'au' });
+  const r2 = await a.c.next('result', markA);
+  assert.deepEqual([r2.isCorrect, r2.score], [true, 2100], 'streak bonus applies too');
+  markA = a.c.mark();
+  markH = h.mark();
+  a.c.send({ t: 'player:next' });
+  const done = await a.c.next('final', markA);
+  assert.deepEqual([done.waiting, done.me?.correctCount, done.me?.rank], [true, 2, 1]);
+  const halfway = await h.next('self:progress', markH);
+  assert.deepEqual([halfway.progress.finished, halfway.progress.percent], [1, 50]);
+  assert.equal(halfway.progress.top[0]?.nickname, 'Asha', 'live leaderboard');
+
+  // A late joiner starts straight away at question 1.
+  const c = await player(created.pin, 'Chen');
+  assert.equal((await c.c.next('question')).question.index, 0);
+
+  // Reconnecting mid-question resumes on the player's own question.
+  const markB2 = b.c.mark();
+  b.c.send({ t: 'player:answer', index: 0, choice: 1 });
+  const rb = await b.c.next('result', markB2);
+  assert.deepEqual([rb.isCorrect, rb.points], [false, 0]);
+  const b2 = new Client();
+  await b2.open();
+  b2.send({ t: 'player:resume', pin: created.pin, playerToken: b.ready.playerToken });
+  const resumed = await b2.next('result');
+  assert.equal(resumed.index, 0, 'back on the result they were looking at');
+
+  markA = a.c.mark();
+  const markB3 = b2.mark();
+  h.send({ t: 'host:end' });
+  const ended = await a.c.next('final', markA);
+  assert.equal(ended.waiting, undefined);
+  assert.equal(ended.podium[0]?.nickname, 'Asha');
+  assert.equal((await b2.next('final', markB3)).me?.correctCount, 0);
+
+  const deadline = Date.now() + 3_000;
+  while (!reports.some((r) => r.body.gameId === created.gameId) && Date.now() < deadline) await sleep(50);
+  const report = reports.find((r) => r.body.gameId === created.gameId)!.body;
+  assert.equal(report.questionsAsked, 2, 'every question counts as asked in self-paced games');
+  assert.equal(report.players.find((p) => p.nickname === 'Asha')?.answers.length, 2);
+
+  for (const x of [h, a.c, b.c, b2, c.c]) x.close();
+});
+
 test('a host connection can open a fresh lobby and stops hearing the old game', async () => {
   const { c: h, ready: first } = await host();
   const a = await player(first.pin, 'Kiran');

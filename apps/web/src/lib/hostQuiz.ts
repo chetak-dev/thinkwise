@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import type { GameMode } from '@thinkwise/shared';
 import { hostPublishedQuizAction, hostQuizAction, type HostResult } from '@/app/(app)/quiz-actions';
 
 export const HOST_SESSION_KEY = 'tw-host-session';
@@ -33,7 +34,7 @@ export function useHostQuiz(source: HostSource = 'draft') {
   const [pending, startTransition] = useTransition();
   const [failure, setFailure] = useState<Extract<HostResult, { ok: false }> | null>(null);
 
-  const host = (quizId: string, beforeHost?: () => Promise<boolean>, options?: { autoAdvance: boolean }) => {
+  const host = (quizId: string, beforeHost?: () => Promise<boolean>, options?: { autoAdvance: boolean; mode?: GameMode }) => {
     setFailure(null);
     startTransition(async () => {
       if (beforeHost && !(await beforeHost())) return;

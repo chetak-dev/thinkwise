@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { timingSafeEqual } from 'node:crypto';
-import type { PlayableQuiz } from '@thinkwise/shared';
+import type { GameMode, PlayableQuiz } from '@thinkwise/shared';
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 const REALTIME_HTTP_URL = process.env.REALTIME_HTTP_URL ?? 'http://127.0.0.1:4000';
@@ -15,6 +15,7 @@ export interface LiveGame {
 
 export interface StartOptions {
   autoAdvance: boolean;
+  mode: GameMode;
 }
 
 /** True only for requests from our game server (constant-time comparison). */

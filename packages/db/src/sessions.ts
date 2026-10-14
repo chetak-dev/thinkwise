@@ -40,7 +40,7 @@ const summaryColumns = {
 export async function createGameSession(
   db: Db,
   host: { id: string; orgId: string | null },
-  game: { gameId: string; pin: string; quizId: string | null; title: string; questionCount: number },
+  game: { gameId: string; pin: string; quizId: string | null; title: string; questionCount: number; mode?: 'live' | 'self' },
 ) {
   await db.insert(gameSessions).values({
     id: game.gameId,
@@ -50,6 +50,7 @@ export async function createGameSession(
     title: game.title,
     pin: game.pin,
     questionCount: game.questionCount,
+    mode: game.mode ?? 'live',
   });
   await db.insert(auditLog).values({ orgId: host.orgId, userId: host.id, action: 'session.create', meta: { sessionId: game.gameId } });
 }
