@@ -138,7 +138,7 @@ export function HostClient() {
 
   useEffect(() => {
     if (!state.pin) return;
-    const url = `${window.location.origin}/play?pin=${state.pin}`;
+    const url = `${window.location.origin}/${state.pin}`;
     setJoinUrl(url);
     QRCode.toString(url, { type: 'svg', margin: 0, color: { dark: '#14112b', light: '#ffffff' } })
       .then((svg) => setQr(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`))
