@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-export type Lang = 'en' | 'hi' | 'mr';
+export type Lang = 'en' | 'hi' | 'or';
+const LANGS: readonly Lang[] = ['en', 'hi', 'or'];
 export type Theme = 'light' | 'dark' | 'system';
 
 export interface Prefs {
@@ -17,6 +18,8 @@ export interface Prefs {
 }
 
 const KEY = 'tw-prefs';
+// Saved before sound became on by default; such saves drop their sound and music choices once.
+const VERSION = 2;
 const CHANGE_EVENT = 'tw-prefs-change';
 export const DEFAULT_PREFS: Prefs = {
   theme: 'system',
@@ -31,7 +34,13 @@ export const DEFAULT_PREFS: Prefs = {
 
 function read(): Prefs {
   try {
-    return { ...DEFAULT_PREFS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Prefs>) };
+    const { v, ...saved } = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Prefs> & { v?: number };
+    if (v !== VERSION) {
+      delete saved.sound;
+      delete saved.music;
+    }
+    const prefs = { ...DEFAULT_PREFS, ...saved };
+    return LANGS.includes(prefs.lang) ? prefs : { ...prefs, lang: 'en' };
   } catch {
     return DEFAULT_PREFS;
   }
@@ -72,7 +81,7 @@ export function usePrefs() {
 
   const update = useCallback((patch: Partial<Prefs>) => {
     const next = { ...read(), ...patch };
-    localStorage.setItem(KEY, JSON.stringify(next));
+    localStorage.setItem(KEY, JSON.stringify({ ...next, v: VERSION }));
     setPrefs(next);
     // Keeps every component using prefs on this page in sync.
     window.dispatchEvent(new Event(CHANGE_EVENT));

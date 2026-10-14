@@ -5,7 +5,15 @@ import { Play } from 'lucide-react';
 import { HOST_QUIZ_KEY, HOST_SESSION_KEY } from '@/lib/hostQuiz';
 
 /** Opens the host screen with the built-in sample quiz, forgetting any saved quiz session. */
-export function SampleHostLink({ className, onNavigate }: { className: string; onNavigate?: () => void }) {
+export function SampleHostLink({
+  className,
+  labelClassName = '',
+  onNavigate,
+}: {
+  className: string;
+  labelClassName?: string;
+  onNavigate?: () => void;
+}) {
   return (
     <Link
       href="/host"
@@ -16,8 +24,8 @@ export function SampleHostLink({ className, onNavigate }: { className: string; o
       }}
       className={className}
     >
-      <Play className="size-4" aria-hidden="true" />
-      Host the sample quiz
+      <Play className="size-4 shrink-0" aria-hidden="true" />
+      <span className={labelClassName}>Host the sample quiz</span>
     </Link>
   );
 }

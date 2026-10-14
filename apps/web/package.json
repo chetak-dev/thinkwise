@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-devanagari": "^5.3.0",
+    "@fontsource-variable/noto-sans-oriya": "^5.3.0",
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
     "@fontsource-variable/space-grotesk": "^5.3.0",
     "@thinkwise/db": "^0.0.0",

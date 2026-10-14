@@ -203,12 +203,17 @@ export function Stage({
               </button>
             )}
           </div>
-          <div className={`${big ? 'size-56' : 'size-44'} justify-self-center overflow-hidden rounded-2xl bg-white p-2`}>
-            {qr && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={qr} alt={`QR code to join: ${joinUrl}`} className="size-full" />
-            )}
-          </div>
+          <figure className="flex flex-col items-center gap-2 justify-self-center">
+            <div
+              className={`${big ? 'size-60 p-4' : 'size-48 p-3.5'} rounded-3xl bg-white shadow-[0_18px_50px_-18px_rgba(12,10,29,.8)] ring-4 ring-white/25`}
+            >
+              {qr && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={qr} alt={`QR code to join: ${joinUrl}`} className="size-full" />
+              )}
+            </div>
+            <figcaption className="text-sm font-semibold text-white/80">Scan to join</figcaption>
+          </figure>
         </div>
 
         <div className="w-full text-center">

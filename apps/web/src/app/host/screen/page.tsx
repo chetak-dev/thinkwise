@@ -11,7 +11,8 @@ import { Stage, formatPin } from '@/components/game/Stage';
 import { useStageSounds } from '@/components/game/useStageSounds';
 import { INITIAL_STAGE, stageReducer } from '@/lib/stage';
 import { useGameSocket } from '@/lib/useGameSocket';
-import { setSoundEnabled } from '@/lib/audio';
+import { setSoundEnabled, useAudioPlaying } from '@/lib/audio';
+import { usePrefs } from '@/lib/prefs';
 
 function Projector() {
   const params = useSearchParams();
@@ -19,7 +20,7 @@ function Projector() {
   const screenKey = params.get('k') ?? '';
   const [state, dispatch] = useReducer(stageReducer, INITIAL_STAGE);
   const [expired, setExpired] = useState(false);
-  const [soundOn, setSoundOn] = useState(false);
+  const [prefs, setPrefs] = usePrefs();
   const [joinUrl, setJoinUrl] = useState('');
   const [qr, setQr] = useState('');
   const [celebrate, setCelebrate] = useState(0);
@@ -36,21 +37,22 @@ function Projector() {
   });
 
   const stage = celebrate ? { ...state, celebration: state.celebration + celebrate } : state;
-  useStageSounds(stage, soundOn);
+  useStageSounds(stage, prefs.sound, { music: prefs.music, volume: prefs.volume });
 
   useEffect(() => {
     if (!state.pin) return;
     const url = `${window.location.origin}/play?pin=${state.pin}`;
     setJoinUrl(url);
-    QRCode.toDataURL(url, { margin: 0, width: 480, color: { dark: '#14112b', light: '#ffffff' } })
-      .then(setQr)
+    QRCode.toString(url, { type: 'svg', margin: 0, color: { dark: '#14112b', light: '#ffffff' } })
+      .then((svg) => setQr(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`))
       .catch(() => setQr(''));
   }, [state.pin]);
 
+  const audioPlaying = useAudioPlaying();
   const toggleSound = () => {
-    const next = !soundOn;
+    const next = !(prefs.sound && audioPlaying);
     setSoundEnabled(next);
-    setSoundOn(next);
+    setPrefs({ sound: next });
   };
 
   return (
@@ -71,11 +73,11 @@ function Projector() {
           <button
             type="button"
             onClick={toggleSound}
-            aria-pressed={soundOn}
+            aria-pressed={audioPlaying}
             className="flex items-center gap-1.5 rounded-xl bg-surface-2 px-3 py-1.5 text-sm font-semibold transition hover:bg-ink-700"
           >
-            {soundOn ? <Volume2 className="size-4" aria-hidden="true" /> : <VolumeX className="size-4" aria-hidden="true" />}
-            {soundOn ? 'Music on' : 'Enable sound'}
+            {audioPlaying ? <Volume2 className="size-4" aria-hidden="true" /> : <VolumeX className="size-4" aria-hidden="true" />}
+            {audioPlaying ? 'Music on' : 'Enable sound'}
           </button>
           {state.phase !== 'lobby' && state.phase !== 'connecting' && state.pin && (
             <span className="rounded-xl bg-surface-2 px-3 py-1.5 font-display font-bold tracking-wider">

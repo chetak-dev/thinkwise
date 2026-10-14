@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { DisplaySettings } from '@/components/DisplaySettings';
+import { Modal } from '@/components/Modal';
 import { logoutAction } from '@/app/(auth)/actions';
 import { createQuizAction } from '@/app/(app)/quiz-actions';
 import { SampleHostLink } from '@/components/SampleHostLink';
@@ -42,47 +43,73 @@ export interface ShellUser {
   email: string;
 }
 
-function SidebarContent({ user, onNavigate, onOpenSettings }: { user: ShellUser; onNavigate?: () => void; onOpenSettings: () => void }) {
+function SidebarContent({
+  user,
+  rail = false,
+  onNavigate,
+  onOpenSettings,
+  onSignOut,
+}: {
+  user: ShellUser;
+  rail?: boolean;
+  onNavigate?: () => void;
+  onOpenSettings: () => void;
+  onSignOut: () => void;
+}) {
   const pathname = usePathname();
+  // In the collapsed rail only icons show; text fades in when the rail expands on hover or keyboard focus.
+  const label = rail
+    ? 'whitespace-nowrap opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100 group-has-[:focus-visible]/rail:opacity-100'
+    : '';
+  const itemPad = rail ? 'px-2.5' : 'px-3';
   return (
     <div className="flex h-full flex-col gap-6 p-4 text-white">
-      <Link href="/dashboard" onClick={onNavigate} className="px-2">
-        <Logo className="text-white" />
-        <span className="mt-1 block text-[10px] font-bold uppercase tracking-[.24em] text-nova-200/70">Live quiz studio</span>
+      <Link href="/dashboard" onClick={onNavigate} aria-label={rail ? 'ThinkWise home' : undefined} className={rail ? 'px-1' : 'px-2'}>
+        <Logo className="text-white" textClassName={label} />
+        <span className={`mt-1 block text-[10px] font-bold uppercase tracking-[.24em] text-nova-200/70 ${label}`}>Live quiz studio</span>
       </Link>
 
       <div className="space-y-2">
         <form action={createQuizAction} onSubmit={onNavigate}>
           <button
             type="submit"
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] font-semibold text-white shadow-lift transition hover:brightness-110"
+            aria-label={rail ? 'New quiz' : undefined}
+            className={`flex h-11 w-full items-center gap-2 rounded-xl bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] font-semibold text-white shadow-lift transition hover:brightness-110 ${
+              rail ? 'justify-start px-3' : 'justify-center'
+            }`}
           >
-            <Plus className="size-4" aria-hidden="true" />
-            New quiz
+            <Plus className="size-4 shrink-0" aria-hidden="true" />
+            <span className={label}>New quiz</span>
           </button>
         </form>
         <SampleHostLink
           onNavigate={onNavigate}
-          className="flex h-9 items-center justify-center gap-2 rounded-xl border border-white/15 text-sm font-semibold text-white/75 transition hover:bg-white/10 hover:text-white"
+          labelClassName={label}
+          className={`flex h-9 items-center gap-2 rounded-xl border border-white/15 text-sm font-semibold text-white/75 transition hover:bg-white/10 hover:text-white ${
+            rail ? 'justify-start px-[11px]' : 'justify-center'
+          }`}
         />
       </div>
 
       <nav aria-label="Main" className="space-y-1">
-        {NAV.map(({ href, label, Icon, ready }) => {
+        {NAV.map(({ href, label: text, Icon, ready }) => {
           const active =
             pathname === href ||
             (href === '/library' && pathname.startsWith('/quiz/')) ||
-            (href === '/reports' && pathname.startsWith('/reports/'));
+            (href === '/reports' && pathname.startsWith('/reports/')) ||
+            (href === '/feedback' && pathname.startsWith('/feedback/'));
           if (!ready) {
             return (
               <span
                 key={href}
                 aria-disabled="true"
-                className="flex cursor-default items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/35"
+                className={`flex cursor-default items-center gap-3 rounded-xl ${itemPad} py-2.5 text-sm font-semibold text-white/35`}
               >
-                <Icon className="size-5" aria-hidden="true" />
-                {label}
-                <span className="ml-auto rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/50">
+                <Icon className="size-5 shrink-0" aria-hidden="true" />
+                <span className={label}>{text}</span>
+                <span
+                  className={`ml-auto rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/50 ${label}`}
+                >
                   Soon
                 </span>
               </span>
@@ -94,14 +121,14 @@ function SidebarContent({ user, onNavigate, onOpenSettings }: { user: ShellUser;
               href={href}
               onClick={onNavigate}
               aria-current={active ? 'page' : undefined}
-              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+              className={`flex items-center gap-3 rounded-xl ${itemPad} py-2.5 text-sm font-semibold transition ${
                 active
                   ? 'bg-white/15 text-white shadow-[inset_0_0_0_1px_rgb(255_255_255/.12)]'
                   : 'text-white/60 hover:bg-white/10 hover:text-white'
               }`}
             >
-              <Icon className="size-5" aria-hidden="true" />
-              {label}
+              <Icon className="size-5 shrink-0" aria-hidden="true" />
+              <span className={label}>{text}</span>
             </Link>
           );
         })}
@@ -111,29 +138,32 @@ function SidebarContent({ user, onNavigate, onOpenSettings }: { user: ShellUser;
         <button
           type="button"
           onClick={onOpenSettings}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-white/60 transition hover:bg-white/10 hover:text-white"
+          className={`flex w-full items-center gap-3 rounded-xl ${itemPad} py-2.5 text-left text-sm font-semibold text-white/60 transition hover:bg-white/10 hover:text-white`}
         >
-          <SlidersHorizontal className="size-5" aria-hidden="true" />
-          Display & accessibility
+          <SlidersHorizontal className="size-5 shrink-0" aria-hidden="true" />
+          <span className={label}>Display & accessibility</span>
         </button>
-        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/10 p-3">
+        <div
+          className={`flex items-center gap-3 rounded-2xl ${
+            rail ? 'p-0.5 transition-colors group-hover/rail:bg-white/10' : 'border border-white/10 bg-white/10 p-3'
+          }`}
+        >
           <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-nova-600 font-bold text-white" aria-hidden="true">
             {user.name.trim().charAt(0).toUpperCase() || '?'}
           </span>
-          <div className="min-w-0 flex-1">
+          <div className={`min-w-0 flex-1 ${label}`}>
             <p className="truncate text-sm font-semibold">{user.name}</p>
             <p className="truncate text-xs text-white/60">{user.email}</p>
           </div>
-          <form action={logoutAction}>
-            <button
-              type="submit"
-              aria-label="Sign out"
-              title="Sign out"
-              className="rounded-lg p-1.5 text-white/70 hover:bg-white/15 hover:text-white"
-            >
-              <LogOut className="size-4" aria-hidden="true" />
-            </button>
-          </form>
+          <button
+            type="button"
+            onClick={onSignOut}
+            aria-label="Sign out"
+            title="Sign out"
+            className={`rounded-lg p-1.5 text-white/70 hover:bg-white/15 hover:text-white ${label}`}
+          >
+            <LogOut className="size-4" aria-hidden="true" />
+          </button>
         </div>
       </div>
     </div>
@@ -147,6 +177,11 @@ const SIDEBAR_BG = {
 export function AppShell({ user, children }: { user: ShellUser; children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const askSignOut = () => {
+    setDrawerOpen(false);
+    setSignOutOpen(true);
+  };
 
   return (
     <div className="min-h-dvh">
@@ -173,10 +208,11 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
       </div>
 
       <aside
-        className="fixed inset-y-0 left-0 z-30 hidden w-64 overflow-hidden border-r border-white/10 lg:block print:hidden"
+        aria-label="Sidebar"
+        className="group/rail fixed inset-y-0 left-0 z-30 hidden w-[72px] overflow-hidden border-r border-white/10 transition-[width,box-shadow] duration-200 hover:w-64 hover:shadow-lift has-[:focus-visible]:w-64 has-[:focus-visible]:shadow-lift lg:block print:hidden"
         style={SIDEBAR_BG}
       >
-        <SidebarContent user={user} onOpenSettings={() => setSettingsOpen(true)} />
+        <SidebarContent user={user} rail onOpenSettings={() => setSettingsOpen(true)} onSignOut={askSignOut} />
       </aside>
 
       {drawerOpen && (
@@ -203,18 +239,44 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
                 setDrawerOpen(false);
                 setSettingsOpen(true);
               }}
+              onSignOut={askSignOut}
             />
           </div>
         </div>
       )}
 
-      <div className="lg:pl-64 print:pl-0">
+      <div className="lg:pl-[72px] print:pl-0">
         <main id="main" className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10 print:max-w-none print:p-0">
           {children}
         </main>
       </div>
 
       <DisplaySettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      <Modal
+        open={signOutOpen}
+        onClose={() => setSignOutOpen(false)}
+        title="Sign out?"
+        description="You’ll need to sign in again to edit quizzes or host a game."
+        size="max-w-sm"
+      >
+        <form action={logoutAction} className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setSignOutOpen(false)}
+            className="inline-flex h-10 items-center rounded-xl border border-app px-4 text-sm font-semibold hover:border-nova-400"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700"
+          >
+            <LogOut className="size-4" aria-hidden="true" />
+            Sign out
+          </button>
+        </form>
+      </Modal>
     </div>
   );
 }

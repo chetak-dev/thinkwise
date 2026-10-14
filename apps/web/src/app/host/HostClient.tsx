@@ -111,8 +111,8 @@ export function HostClient() {
     if (!state.pin) return;
     const url = `${window.location.origin}/play?pin=${state.pin}`;
     setJoinUrl(url);
-    QRCode.toDataURL(url, { margin: 0, width: 320, color: { dark: '#14112b', light: '#ffffff' } })
-      .then(setQr)
+    QRCode.toString(url, { type: 'svg', margin: 0, color: { dark: '#14112b', light: '#ffffff' } })
+      .then((svg) => setQr(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`))
       .catch(() => setQr(''));
   }, [state.pin]);
 

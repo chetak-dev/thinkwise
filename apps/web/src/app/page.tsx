@@ -63,7 +63,7 @@ const FEATURES = [
   },
   {
     Icon: Globe2,
-    title: 'English, हिन्दी, मराठी',
+    title: 'English, हिन्दी, ଓଡ଼ିଆ',
     body: 'Players choose their language on the join screen. More languages can be added later.',
   },
   {

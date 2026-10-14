@@ -104,7 +104,7 @@ export function blanksRight(given: string[], blanks: string[][], caseSensitive =
 }
 
 export const VISIBILITIES = ['private', 'unlisted', 'public'] as const;
-export const QUIZ_LANGUAGES = ['en', 'hi', 'mr', 'other'] as const;
+export const QUIZ_LANGUAGES = ['en', 'hi', 'or', 'other'] as const;
 export const SCORING_MODES = ['speed', 'accuracy'] as const;
 export const GRACE_MS_VALUES = [0, 250, 500, 750, 1000, 2000, 3000] as const;
 export const THEME_SWATCHES = ['#6d4aff', '#e8425a', '#0ea595', '#c4500b', '#0067a5', '#9a4a82', '#14112b'] as const;
@@ -140,7 +140,8 @@ export type GameRules = z.infer<typeof GameRules>;
 /** Everything in the quiz settings dialog except the description, which has its own column. */
 export const QuizSettings = GameRules.extend({
   subject: z.string().max(SUBJECT_MAX).default(''),
-  language: z.enum(QUIZ_LANGUAGES).default('en'),
+  // Marathi was offered before Odia replaced it.
+  language: z.preprocess((v) => (v === 'mr' ? 'other' : v), z.enum(QUIZ_LANGUAGES)).default('en'),
   tags: z.string().max(TAGS_MAX).default(''),
   visibility: z.enum(VISIBILITIES).default('private'),
   orgName: z.string().max(ORG_NAME_MAX).default(''),

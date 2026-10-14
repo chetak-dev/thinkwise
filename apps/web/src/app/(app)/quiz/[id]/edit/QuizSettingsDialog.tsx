@@ -18,7 +18,7 @@ const FIELD = 'w-full rounded-xl border border-app bg-surface px-3 py-2 text-sm 
 const LABEL = 'block space-y-1.5 text-sm font-semibold';
 const HEADING = 'text-xs font-bold uppercase tracking-wider text-muted';
 
-const LANGUAGE_LABELS: Record<QuizSettings['language'], string> = { en: 'English', hi: 'हिन्दी', mr: 'मराठी', other: 'Other' };
+const LANGUAGE_LABELS: Record<QuizSettings['language'], string> = { en: 'English', hi: 'हिन्दी', or: 'ଓଡ଼ିଆ', other: 'Other' };
 const VISIBILITY_HELP: Record<QuizSettings['visibility'], string> = {
   private: 'Only you can see and host this quiz.',
   unlisted: 'Anyone with the link can view it, but it isn’t listed anywhere.',

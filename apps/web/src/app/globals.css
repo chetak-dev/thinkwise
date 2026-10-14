@@ -2,12 +2,15 @@
 @import '@fontsource-variable/plus-jakarta-sans';
 @import '@fontsource-variable/space-grotesk';
 @import '@fontsource-variable/noto-sans-devanagari';
+@import '@fontsource-variable/noto-sans-oriya';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: 'Plus Jakarta Sans Variable', 'Noto Sans Devanagari Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Space Grotesk Variable', 'Plus Jakarta Sans Variable', 'Noto Sans Devanagari Variable', ui-sans-serif,
+  --font-sans: 'Plus Jakarta Sans Variable', 'Noto Sans Devanagari Variable', 'Noto Sans Oriya Variable', ui-sans-serif, system-ui,
+    sans-serif;
+  --font-display: 'Space Grotesk Variable', 'Plus Jakarta Sans Variable', 'Noto Sans Devanagari Variable', 'Noto Sans Oriya Variable',
+    ui-sans-serif,
     system-ui, sans-serif;
 
   --color-nova-50: #f3f0ff;
