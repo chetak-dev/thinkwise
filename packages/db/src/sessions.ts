@@ -27,7 +27,8 @@ const summaryColumns = {
   title: gameSessions.title,
   pin: gameSessions.pin,
   mode: gameSessions.mode,
-  status: gameSessions.status,
+  // A game server restart drops running games without reporting them, so old "live" rows were never played out.
+  status: sql<SessionStatus>`case when ${gameSessions.status} = 'live' and ${gameSessions.createdAt} < now() - interval '12 hours' then 'abandoned' else ${gameSessions.status} end`,
   playerCount: gameSessions.playerCount,
   questionCount: gameSessions.questionCount,
   questionsAsked: gameSessions.questionsAsked,

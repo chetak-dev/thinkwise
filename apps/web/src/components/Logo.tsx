@@ -31,7 +31,7 @@ export function Logo({ className = '', textClassName = '' }: { className?: strin
       <LogoMark className="size-[1.6em]" />
       <span className={textClassName}>
         <span className="font-bold">Think</span>
-        <span className="font-medium opacity-75">Wise</span>
+        <span className="bg-[linear-gradient(90deg,#8f6dff,#ff6b81)] bg-clip-text font-bold text-transparent">Wise</span>
       </span>
     </span>
   );

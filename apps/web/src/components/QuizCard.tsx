@@ -15,12 +15,13 @@ import { useHostQuiz } from '@/lib/hostQuiz';
 import { formatDate } from '@/lib/time';
 import { StartSessionDialog } from '@/components/StartSessionDialog';
 
+// One brand family, so a page of cards reads as a set rather than a paint chart.
 const BANNERS = [
   'linear-gradient(135deg,#6d4aff,#ff5d73)',
-  'linear-gradient(135deg,#14c9b8,#6d4aff)',
-  'linear-gradient(135deg,#ffb627,#ff5d73)',
-  'linear-gradient(135deg,#0067a5,#14c9b8)',
-  'linear-gradient(135deg,#9a4a82,#6d4aff)',
+  'linear-gradient(135deg,#5b34f0,#c04ee0)',
+  'linear-gradient(135deg,#8466ff,#ff7a8a)',
+  'linear-gradient(135deg,#4a22cc,#d9468f)',
+  'linear-gradient(135deg,#7c5cff,#f0609e)',
 ];
 
 function bannerFor(id: string) {

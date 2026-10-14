@@ -11,6 +11,8 @@ const { migrateHandle } = await import('../src/migrate');
 const auth = await import('../src/auth');
 const q = await import('../src/quizzes');
 const s = await import('../src/sessions');
+const schema = await import('../src/schema');
+const { eq } = await import('drizzle-orm');
 
 const handle = openDb();
 const db = handle.db;
@@ -83,4 +85,16 @@ test('a hosted game becomes a session; results are stored once and only for the 
 
   await q.deleteQuiz(db, host, quizId);
   assert.equal((await s.listSessions(db, host.id))[0]?.quizId, null, 'reports survive deleting the quiz');
+});
+
+test('a game left "live" by a server restart reads as not played once it is old', async () => {
+  const gameId = randomUUID();
+  await s.createGameSession(db, host, { gameId, pin: '654321', quizId: null, title: 'Lost game', questionCount: 1 });
+  assert.equal((await s.getSessionReport(db, host.id, gameId))?.status, 'live');
+  await db
+    .update(schema.gameSessions)
+    .set({ createdAt: new Date(Date.now() - 13 * 60 * 60 * 1000) })
+    .where(eq(schema.gameSessions.id, gameId));
+  assert.equal((await s.getSessionReport(db, host.id, gameId))?.status, 'abandoned');
+  assert.equal((await s.listSessions(db, host.id)).find((x) => x.id === gameId)?.status, 'abandoned');
 });
