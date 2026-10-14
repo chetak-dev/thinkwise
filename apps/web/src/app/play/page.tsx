@@ -957,7 +957,7 @@ function PlayFlow() {
         Skip to content
       </a>
       <div className="decorative arena-grid pointer-events-none absolute inset-0 -z-10" aria-hidden="true" />
-      <ConnectionBadge status={status} />
+      <ConnectionBadge status={status} quietConnect />
 
       <header className="glass-panel m-3 flex items-center justify-between gap-2 rounded-2xl px-3 py-3 sm:px-4">
         <Link href="/" aria-label="ThinkWise home" className="shrink-0">
@@ -1036,7 +1036,7 @@ function PlayFlow() {
                 disabled={step === 'checking' || status !== 'open'}
                 className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-ink-900 text-lg font-bold text-white disabled:opacity-60 dark:bg-white dark:text-ink-900"
               >
-                {step === 'checking' && <Loader2 className="size-5 animate-spin" aria-hidden="true" />}
+                {(step === 'checking' || status === 'connecting') && <Loader2 className="size-5 animate-spin" aria-hidden="true" />}
                 {step === 'checking' ? t.checking : t.enter}
               </button>
             </form>

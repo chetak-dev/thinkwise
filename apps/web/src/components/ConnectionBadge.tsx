@@ -7,7 +7,8 @@ import type { SocketStatus } from '@/lib/useGameSocket';
 const SHOW_AFTER_MS = { connecting: 1500, reconnecting: 1000 } as const;
 const WAKING_AFTER_MS = 6000;
 
-export function ConnectionBadge({ status }: { status: SocketStatus }) {
+/** `quietConnect` hides the first-connect banner where the screen already shows its own loader. */
+export function ConnectionBadge({ status, quietConnect = false }: { status: SocketStatus; quietConnect?: boolean }) {
   const [shownFor, setShownFor] = useState<SocketStatus | null>(null);
   const [slow, setSlow] = useState(false);
 
@@ -23,7 +24,7 @@ export function ConnectionBadge({ status }: { status: SocketStatus }) {
     };
   }, [status]);
 
-  if (status === 'open' || shownFor !== status) return null;
+  if (status === 'open' || shownFor !== status || (quietConnect && status === 'connecting')) return null;
   return (
     <div
       role="status"
