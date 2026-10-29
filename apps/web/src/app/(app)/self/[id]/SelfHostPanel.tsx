@@ -4,8 +4,9 @@ import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
-import { ArrowLeft, BarChart3, CalendarClock, Check, Copy, Loader2, Square, Timer, Users } from 'lucide-react';
+import { ArrowLeft, BarChart3, CalendarClock, Check, Copy, Loader2, QrCode, Share2, Square, Timer, Users } from 'lucide-react';
 import type { SelfHostView } from '@thinkwise/db';
+import { TypeToConfirm, confirmMatches } from '@/components/TypeToConfirm';
 import { formatDateTime } from '@/lib/time';
 import { closeSelfAction, setSelfClosesAtAction } from './actions';
 
@@ -28,6 +29,8 @@ export function SelfHostPanel({ view, timeZone }: { view: SelfHostView; timeZone
   const [qr, setQr] = useState('');
   const [copied, setCopied] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [showQr, setShowQr] = useState(false);
   const [editing, setEditing] = useState(false);
   const [closesAt, setClosesAt] = useState(() => (view.closesAt ? localInput(view.closesAt) : ''));
   const [problem, setProblem] = useState<string | null>(null);
@@ -61,8 +64,23 @@ export function SelfHostPanel({ view, timeZone }: { view: SelfHostView; timeZone
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const share = async () => {
+    const text = `Take the quiz "${view.title}": ${joinUrl}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: view.title, text: `Take the quiz "${view.title}"`, url: joinUrl });
+        return;
+      } catch (e) {
+        if ((e as Error).name === 'AbortError') return;
+      }
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  };
+
+  const quizName = view.title.trim() || 'Untitled quiz';
   const close = () =>
     startTransition(async () => {
+      if (!confirmMatches(typed, quizName)) return;
       await closeSelfAction(view.id);
       setConfirmClose(false);
       router.refresh();
@@ -114,27 +132,35 @@ export function SelfHostPanel({ view, timeZone }: { view: SelfHostView; timeZone
       </div>
 
       {live && (
-        <section className="glass-panel grid gap-6 rounded-3xl p-6 md:grid-cols-[1fr_auto]">
-          <div className="space-y-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[.14em] text-muted">Quiz PIN</p>
-              <p className="font-display text-5xl font-bold tabular-nums tracking-[0.12em]">{view.pin}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <code className="rounded-xl bg-surface-2 px-3 py-2 text-sm font-semibold">{joinUrl.replace(/^https?:\/\//, '')}</code>
-              <button type="button" onClick={copy} className={outline}>
-                {copied ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
-                {copied ? 'Copied' : 'Copy link'}
-              </button>
-            </div>
-            <p className="text-sm text-muted">
-              Share the link, QR code or PIN. Participants can start any time while the quiz is open; each gets {minutes(view.timeLimitMs)}.
+        <section className="glass-panel space-y-4 rounded-3xl p-6">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[.14em] text-muted">Quiz link</p>
+            <p className="mt-1 text-sm text-muted">
+              Send this link to participants. They can start any time while the quiz is open; each gets {minutes(view.timeLimitMs)}.
             </p>
           </div>
-          {qr && (
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="rounded-xl bg-surface-2 px-3 py-2 text-base font-semibold">{joinUrl.replace(/^https?:\/\//, '')}</code>
+            <button type="button" onClick={copy} className={outline}>
+              {copied ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
+              {copied ? 'Copied' : 'Copy link'}
+            </button>
+            <button type="button" onClick={share} className={outline}>
+              <Share2 className="size-4" aria-hidden="true" />
+              Share
+            </button>
+            <button type="button" onClick={() => setShowQr((v) => !v)} aria-expanded={showQr} className={outline}>
+              <QrCode className="size-4" aria-hidden="true" />
+              {showQr ? 'Hide QR code' : 'QR code'}
+            </button>
+          </div>
+          {showQr && qr && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={qr} alt={`QR code for ${joinUrl}`} className="size-44 rounded-2xl bg-white p-3 shadow-soft" />
           )}
+          <p className="text-xs text-muted">
+            PIN {view.pin} also works on the Join page.
+          </p>
         </section>
       )}
 
@@ -199,23 +225,35 @@ export function SelfHostPanel({ view, timeZone }: { view: SelfHostView; timeZone
       <div className="flex flex-wrap gap-2">
         {live ? (
           confirmClose ? (
-            <div role="alertdialog" aria-label="Close the quiz now?" className="flex flex-wrap items-center gap-2 rounded-2xl border border-rose-300 p-2 pl-4">
-              <span className="text-sm font-semibold">Close now? Anyone still answering is submitted with what they’ve saved.</span>
-              <button
-                type="button"
-                onClick={close}
-                disabled={pending}
-                className="inline-flex h-10 items-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white"
-              >
-                {pending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-                Close quiz
-              </button>
-              <button type="button" onClick={() => setConfirmClose(false)} className="h-10 rounded-xl px-3 text-sm font-semibold text-muted">
-                Cancel
-              </button>
+            <div role="alertdialog" aria-label="Close the quiz now?" className="w-full max-w-lg space-y-3 rounded-2xl border border-rose-300 p-4">
+              <p className="text-sm font-semibold">
+                Close the quiz now? Nobody new can join, and anyone still answering is submitted with what they’ve saved. This can’t be undone.
+              </p>
+              <TypeToConfirm expected={quizName} value={typed} onChange={setTyped} onEnter={close} />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={close}
+                  disabled={pending || !confirmMatches(typed, quizName)}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {pending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+                  Close quiz
+                </button>
+                <button type="button" onClick={() => setConfirmClose(false)} className="h-10 rounded-xl px-3 text-sm font-semibold text-muted">
+                  Cancel
+                </button>
+              </div>
             </div>
           ) : (
-            <button type="button" onClick={() => setConfirmClose(true)} className={outline}>
+            <button
+              type="button"
+              onClick={() => {
+                setTyped('');
+                setConfirmClose(true);
+              }}
+              className={outline}
+            >
               <Square className="size-4" aria-hidden="true" />
               Close now
             </button>

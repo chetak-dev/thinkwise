@@ -155,7 +155,9 @@ async function startSelf(
   // A start a minute or so in the past is just the time the form took to fill in.
   const opensAt = Math.max(num(options?.opensAt) ?? now, now);
   const closesAt = num(options?.closesAt);
-  const limit = num(options?.timeLimitMs) ?? totalTimeMs(quiz);
+  const requested = num(options?.timeLimitMs);
+  // The automatic limit (all question timers added up) is kept within the allowed range.
+  const limit = requested ?? Math.min(Math.max(totalTimeMs(quiz), SELF_LIMIT_MIN_MS), SELF_LIMIT_MAX_MS);
   if (closesAt === null || closesAt <= opensAt) return { ok: false, error: 'The quiz must close after it opens.' };
   if (closesAt - opensAt > SELF_WINDOW_MAX_MS) return { ok: false, error: 'A self-paced quiz can stay open for 90 days at most.' };
   if (limit < SELF_LIMIT_MIN_MS || limit > SELF_LIMIT_MAX_MS) {

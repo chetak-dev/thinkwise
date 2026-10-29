@@ -14,6 +14,7 @@ import {
 import { useHostQuiz } from '@/lib/hostQuiz';
 import { formatDate } from '@/lib/time';
 import { StartSessionDialog } from '@/components/StartSessionDialog';
+import { TypeToConfirm, confirmMatches } from '@/components/TypeToConfirm';
 
 // One brand family, so a page of cards reads as a set rather than a paint chart.
 const BANNERS = [
@@ -49,6 +50,7 @@ export function QuizCard({ quiz, timeZone }: { quiz: QuizCardData; timeZone: str
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [typed, setTyped] = useState('');
   const [startOpen, setStartOpen] = useState(false);
   const [favourite, setFavourite] = useState(quiz.favourite);
   const [busy, startTransition] = useTransition();
@@ -77,9 +79,22 @@ export function QuizCard({ quiz, timeZone }: { quiz: QuizCardData; timeZone: str
   useEffect(() => {
     const d = dialogRef.current;
     if (!d) return;
-    if (confirmOpen && !d.open) d.showModal();
+    if (confirmOpen && !d.open) {
+      setTyped('');
+      d.showModal();
+    }
     if (!confirmOpen && d.open) d.close();
   }, [confirmOpen]);
+
+  const quizName = quiz.title.trim() || 'Untitled quiz';
+  const remove = () => {
+    if (!confirmMatches(typed, quizName)) return;
+    setConfirmOpen(false);
+    startTransition(async () => {
+      await deleteQuizAction(quiz.id);
+      router.refresh();
+    });
+  };
 
   // Same zone on server and browser, so the date never mismatches during hydration.
   const updated = formatDate(new Date(quiz.updatedAt), timeZone);
@@ -259,23 +274,21 @@ export function QuizCard({ quiz, timeZone }: { quiz: QuizCardData; timeZone: str
       >
         <div className="p-6">
           <h2 id={`del-${quiz.id}`} className="font-display text-xl font-bold">
-            Delete “{quiz.title || 'Untitled quiz'}”?
+            Delete “{quizName}”?
           </h2>
           <p className="mt-2 text-sm text-muted">This removes the quiz and its questions for good. Games already played aren’t affected.</p>
+          <div className="mt-4">
+            <TypeToConfirm expected={quizName} value={typed} onChange={setTyped} onEnter={remove} />
+          </div>
           <div className="mt-6 flex justify-end gap-2">
             <button type="button" onClick={() => setConfirmOpen(false)} className="h-10 rounded-xl border border-app px-4 text-sm font-semibold hover:bg-surface-2">
               Keep it
             </button>
             <button
               type="button"
-              onClick={() => {
-                setConfirmOpen(false);
-                startTransition(async () => {
-                  await deleteQuizAction(quiz.id);
-                  router.refresh();
-                });
-              }}
-              className="h-10 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700"
+              onClick={remove}
+              disabled={!confirmMatches(typed, quizName)}
+              className="h-10 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Delete quiz
             </button>
