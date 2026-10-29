@@ -4,9 +4,14 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import {
   QuizSave,
+  SELF_LIMIT_MAX_MS,
+  SELF_LIMIT_MIN_MS,
+  SELF_WINDOW_MAX_MS,
+  arrangeQuiz,
   copyQuiz,
   createGameSession,
   createQuiz,
+  createSelfSession,
   deleteQuiz,
   duplicateQuiz,
   getDb,
@@ -17,8 +22,9 @@ import {
   saveQuiz,
   setArchived,
   setFavourite,
+  totalTimeMs,
 } from '@thinkwise/db';
-import { CSV_MAX_BYTES, csvToQuestions, toPlayable, type GameMode } from '@thinkwise/shared';
+import { CSV_MAX_BYTES, csvToQuestions, toPlayable, type GameMode, type PlayableQuiz } from '@thinkwise/shared';
 import { randomUUID } from 'node:crypto';
 import { requireUser } from '@/lib/session';
 import { createLiveGame } from '@/lib/realtime';
@@ -95,6 +101,7 @@ export async function saveQuizAction(id: string, input: unknown): Promise<SaveRe
 
 export type HostResult =
   | { ok: true; gameId: string; hostToken: string }
+  | { ok: true; selfId: string }
   | { ok: false; error: string; problems?: { index: number; issues: string[] }[] };
 
 function notReadyMessage(check: { empty: boolean; titleMissing: boolean; problems: unknown[] }, action: string) {
@@ -117,18 +124,64 @@ export async function publishQuizAction(id: string): Promise<PublishActionResult
   return { ok: true, publishedAt: result.publishedAt.toISOString() };
 }
 
+export interface StartOptions {
+  autoAdvance?: unknown;
+  mode?: unknown;
+  /** Self-paced only (epoch ms). */
+  opensAt?: unknown;
+  closesAt?: unknown;
+  /** Self-paced only: each participant's time to finish. */
+  timeLimitMs?: unknown;
+}
+
 /** Untrusted options from the start dialog, reduced to what the game server accepts. */
-function startOptions(options?: { autoAdvance?: unknown; mode?: unknown }) {
+function startOptions(options?: StartOptions) {
   const mode: GameMode = options?.mode === 'self' ? 'self' : 'live';
   return { autoAdvance: mode === 'live' && options?.autoAdvance !== false, mode };
 }
 
-export async function hostQuizAction(id: string, options?: { autoAdvance?: unknown; mode?: unknown }): Promise<HostResult> {
+/**
+ * Self-paced sessions run from the database rather than the game server: participants
+ * answer within the host's window, each against their own time limit.
+ */
+async function startSelf(
+  user: { id: string; orgId: string | null },
+  quizId: string,
+  quiz: PlayableQuiz,
+  options: StartOptions | undefined,
+): Promise<HostResult> {
+  const now = Date.now();
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  // A start a minute or so in the past is just the time the form took to fill in.
+  const opensAt = Math.max(num(options?.opensAt) ?? now, now);
+  const closesAt = num(options?.closesAt);
+  const limit = num(options?.timeLimitMs) ?? totalTimeMs(quiz);
+  if (closesAt === null || closesAt <= opensAt) return { ok: false, error: 'The quiz must close after it opens.' };
+  if (closesAt - opensAt > SELF_WINDOW_MAX_MS) return { ok: false, error: 'A self-paced quiz can stay open for 90 days at most.' };
+  if (limit < SELF_LIMIT_MIN_MS || limit > SELF_LIMIT_MAX_MS) {
+    return { ok: false, error: 'The time limit must be between 1 minute and 24 hours.' };
+  }
+  const session = await createSelfSession(getDb(), user, {
+    quizId,
+    title: quiz.title,
+    quiz: arrangeQuiz(quiz),
+    opensAt: new Date(opensAt),
+    closesAt: new Date(closesAt),
+    timeLimitMs: Math.round(limit),
+    soundtrack: 'ocean-drive',
+  });
+  revalidatePath('/dashboard');
+  revalidatePath('/reports');
+  return { ok: true, selfId: session.id };
+}
+
+export async function hostQuizAction(id: string, options?: StartOptions): Promise<HostResult> {
   const user = await requireUser();
   const quiz = await getQuiz(getDb(), user.id, id);
   if (!quiz) return { ok: false, error: 'This quiz no longer exists.' };
   const check = toPlayable(quiz.title, quiz.questions, quiz.settings);
   if (!check.ok) return { ok: false, error: notReadyMessage(check, 'hosting'), problems: check.problems };
+  if (options?.mode === 'self') return startSelf(user, id, check.quiz, options);
   try {
     const start = startOptions(options);
     const game = await createLiveGame(check.quiz, start);
@@ -148,10 +201,11 @@ export async function hostQuizAction(id: string, options?: { autoAdvance?: unkno
 }
 
 /** Hosts the published copy of a quiz shared with (or owned by) the signed-in host. */
-export async function hostPublishedQuizAction(id: string, options?: { autoAdvance?: unknown; mode?: unknown }): Promise<HostResult> {
+export async function hostPublishedQuizAction(id: string, options?: StartOptions): Promise<HostResult> {
   const user = await requireUser();
   const quiz = await getHostablePublished(getDb(), user.id, id);
   if (!quiz) return { ok: false, error: 'This quiz isn’t available to host.' };
+  if (options?.mode === 'self') return startSelf(user, id, quiz, options);
   try {
     const start = startOptions(options);
     const game = await createLiveGame(quiz, start);

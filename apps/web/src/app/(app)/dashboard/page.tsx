@@ -49,15 +49,16 @@ export default async function DashboardPage() {
     getTimeZone(),
     listRunningSessions(db, user.id),
   ]);
+  const liveCandidates = candidates.filter((s) => s.mode === 'live');
   const [counts, live] = await Promise.all([
     sessionCounts(
       db,
       user.id,
       recent.map((q) => q.id),
     ),
-    liveGameStatus(candidates.map((s) => s.id)),
+    liveGameStatus(liveCandidates.map((s) => s.id)),
   ]);
-  const running = candidates.filter((s) => live[s.id] && live[s.id]!.phase !== 'finished');
+  const running = candidates.filter((s) => s.mode === 'self' || (live[s.id] && live[s.id]!.phase !== 'finished'));
   const total = stats.quizzes;
   const firstName = user.name.trim().split(/\s+/)[0] ?? user.name;
 
@@ -108,12 +109,31 @@ export default async function DashboardPage() {
               >
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{s.title}</p>
-                  <p className="text-sm text-muted">
-                    PIN <span className="font-semibold tabular-nums text-app">{s.pin}</span> · {PHASE_LABELS[live[s.id]!.phase]} ·{' '}
-                    {live[s.id]!.players} {live[s.id]!.players === 1 ? 'player' : 'players'}
-                  </p>
+                  {s.mode === 'self' ? (
+                    <p className="text-sm text-muted">
+                      PIN <span className="font-semibold tabular-nums text-app">{s.pin}</span> · Self-paced ·{' '}
+                      {s.opensAt && s.opensAt.getTime() > Date.now()
+                        ? `opens ${formatDateTime(s.opensAt, timeZone)}`
+                        : `open until ${s.closesAt ? formatDateTime(s.closesAt, timeZone) : '—'}`}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted">
+                      PIN <span className="font-semibold tabular-nums text-app">{s.pin}</span> · {PHASE_LABELS[live[s.id]!.phase]} ·{' '}
+                      {live[s.id]!.players} {live[s.id]!.players === 1 ? 'player' : 'players'}
+                    </p>
+                  )}
                 </div>
-                <ResumeSessionButton sessionId={s.id} />
+                {s.mode === 'self' ? (
+                  <Link
+                    href={`/self/${s.id}`}
+                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                  >
+                    View progress
+                    <ArrowRight className="size-4" aria-hidden="true" />
+                  </Link>
+                ) : (
+                  <ResumeSessionButton sessionId={s.id} />
+                )}
               </li>
             ))}
           </ul>

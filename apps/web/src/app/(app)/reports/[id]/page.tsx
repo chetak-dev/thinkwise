@@ -118,7 +118,16 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
 
       {!finished ? (
         <p className="rounded-2xl border border-dashed border-app bg-surface p-6 text-center text-muted">
-          This game hasn’t finished yet. Results appear here as soon as it ends.
+          {report.mode === 'self' ? (
+            <>
+              This self-paced quiz is still open. Results appear here once it closes.{' '}
+              <Link href={`/self/${report.id}`} className="font-semibold text-nova-700 underline dark:text-nova-300">
+                Follow its progress
+              </Link>
+            </>
+          ) : (
+            'This game hasn’t finished yet. Results appear here as soon as it ends.'
+          )}
         </p>
       ) : (
         <>

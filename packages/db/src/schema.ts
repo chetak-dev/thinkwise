@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 export const organisations = pgTable('organisations', {
@@ -163,11 +164,44 @@ export const gameSessions = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }),
     endedAt: timestamp('ended_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Self-paced: when participants may start, and when everything closes. */
+    opensAt: timestamp('opens_at', { withTimezone: true }),
+    closesAt: timestamp('closes_at', { withTimezone: true }),
+    /** Self-paced: each participant's own time limit from when they start. */
+    timeLimitMs: integer('time_limit_ms'),
+    /** Self-paced: the full quiz as played (with answers), shuffled once. Never sent to participants as is. */
+    quiz: jsonb('quiz'),
   },
   (t) => [
     index('game_sessions_host_created_idx').on(t.hostId, t.createdAt),
     index('game_sessions_quiz_idx').on(t.quizId),
     index('game_sessions_event_idx').on(t.eventId),
+    index('game_sessions_pin_idx').on(t.pin),
+  ],
+);
+
+/** One participant's go at a self-paced session. Turned into session_players rows when the session closes. */
+export const selfAttempts = pgTable(
+  'self_attempts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => gameSessions.id, { onDelete: 'cascade' }),
+    /** sha256 of the participant's secret token, kept on their device. */
+    tokenHash: text('token_hash').notNull().unique(),
+    nickname: text('nickname').notNull(),
+    avatar: text('avatar').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    /** { [questionIndex]: { o: firstOpenedMs, a: answer, t: savedMs } } */
+    answers: jsonb('answers').notNull().default({}),
+    score: integer('score').notNull().default(0),
+    correctCount: integer('correct_count').notNull().default(0),
+  },
+  (t) => [
+    index('self_attempts_session_idx').on(t.sessionId),
+    uniqueIndex('self_attempts_nickname_idx').on(t.sessionId, sql`lower(${t.nickname})`),
   ],
 );
 

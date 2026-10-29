@@ -2,8 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import type { GameMode } from '@thinkwise/shared';
-import { hostPublishedQuizAction, hostQuizAction, type HostResult } from '@/app/(app)/quiz-actions';
+import { hostPublishedQuizAction, hostQuizAction, type HostResult, type StartOptions } from '@/app/(app)/quiz-actions';
 
 export const HOST_SESSION_KEY = 'tw-host-session';
 export const HOST_QUIZ_KEY = 'tw-host-quiz';
@@ -34,13 +33,17 @@ export function useHostQuiz(source: HostSource = 'draft') {
   const [pending, startTransition] = useTransition();
   const [failure, setFailure] = useState<Extract<HostResult, { ok: false }> | null>(null);
 
-  const host = (quizId: string, beforeHost?: () => Promise<boolean>, options?: { autoAdvance: boolean; mode?: GameMode }) => {
+  const host = (quizId: string, beforeHost?: () => Promise<boolean>, options?: StartOptions) => {
     setFailure(null);
     startTransition(async () => {
       if (beforeHost && !(await beforeHost())) return;
       const result = await hostAction(source)(quizId, options);
       if (!result.ok) {
         setFailure(result);
+        return;
+      }
+      if ('selfId' in result) {
+        router.push(`/self/${result.selfId}`);
         return;
       }
       rememberHostSession(result.gameId, result.hostToken, quizId, source);

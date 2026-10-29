@@ -1,8 +1,9 @@
-import { and, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { GameResults, SessionStatus } from '@thinkwise/shared';
 import type { Db } from './client';
 import { auditLog, gameSessions, quizzes, sessionPlayers } from './schema';
+import { finalizeDueSelfSessions } from './selfSessions';
 
 const SessionId = z.uuid();
 
@@ -19,6 +20,9 @@ export interface SessionSummary {
   createdAt: Date;
   startedAt: Date | null;
   endedAt: Date | null;
+  /** Self-paced only. */
+  opensAt: Date | null;
+  closesAt: Date | null;
 }
 
 const summaryColumns = {
@@ -28,13 +32,16 @@ const summaryColumns = {
   pin: gameSessions.pin,
   mode: gameSessions.mode,
   // A game server restart drops running games without reporting them, so old "live" rows were never played out.
-  status: sql<SessionStatus>`case when ${gameSessions.status} = 'live' and ${gameSessions.createdAt} < now() - interval '12 hours' then 'abandoned' else ${gameSessions.status} end`,
+  // Self-paced sessions live in the database and stay open until their closing time.
+  status: sql<SessionStatus>`case when ${gameSessions.status} = 'live' and ${gameSessions.mode} = 'live' and ${gameSessions.createdAt} < now() - interval '12 hours' then 'abandoned' else ${gameSessions.status} end`,
   playerCount: gameSessions.playerCount,
   questionCount: gameSessions.questionCount,
   questionsAsked: gameSessions.questionsAsked,
   createdAt: gameSessions.createdAt,
   startedAt: gameSessions.startedAt,
   endedAt: gameSessions.endedAt,
+  opensAt: gameSessions.opensAt,
+  closesAt: gameSessions.closesAt,
 };
 
 /** Called when a host opens a lobby for a saved quiz. */
@@ -101,6 +108,7 @@ export async function recordResults(db: Db, results: GameResults) {
 }
 
 export async function listSessions(db: Db, hostId: string, limit = 50): Promise<SessionSummary[]> {
+  await finalizeDueSelfSessions(db, hostId);
   return db
     .select(summaryColumns)
     .from(gameSessions)
@@ -111,6 +119,7 @@ export async function listSessions(db: Db, hostId: string, limit = 50): Promise<
 
 /** The host's sessions that may still be running (recent and not yet reported). */
 export async function listRunningSessions(db: Db, hostId: string, limit = 10): Promise<SessionSummary[]> {
+  await finalizeDueSelfSessions(db, hostId);
   return db
     .select(summaryColumns)
     .from(gameSessions)
@@ -118,8 +127,10 @@ export async function listRunningSessions(db: Db, hostId: string, limit = 10): P
       and(
         eq(gameSessions.hostId, hostId),
         eq(gameSessions.status, 'live'),
-        isNotNull(gameSessions.hostToken),
-        gt(gameSessions.createdAt, sql`now() - interval '12 hours'`),
+        or(
+          and(isNotNull(gameSessions.hostToken), gt(gameSessions.createdAt, sql`now() - interval '12 hours'`)),
+          eq(gameSessions.mode, 'self'),
+        ),
       ),
     )
     .orderBy(desc(gameSessions.createdAt))
@@ -172,6 +183,7 @@ export interface SessionReport extends SessionSummary {
 
 export async function getSessionReport(db: Db, hostId: string, id: string): Promise<SessionReport | null> {
   if (!SessionId.safeParse(id).success) return null;
+  await finalizeDueSelfSessions(db, hostId);
   const [row] = await db
     .select({ ...summaryColumns, questions: gameSessions.questions })
     .from(gameSessions)

@@ -74,6 +74,7 @@ export function HostClient() {
       setRelaunchError(result.error);
       return;
     }
+    if ('selfId' in result) return;
     rememberHostSession(result.gameId, result.hostToken, remembered.id, remembered.source);
     send({ t: 'host:resume', gameId: result.gameId, hostToken: result.hostToken });
   };

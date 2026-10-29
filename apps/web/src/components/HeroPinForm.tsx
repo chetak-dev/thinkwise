@@ -9,8 +9,8 @@ export function HeroPinForm() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const clean = pin.replace(/\D/g, '').slice(0, 6);
-    router.push(clean ? `/play?pin=${clean}` : '/play');
+    const clean = pin.replace(/\D/g, '').slice(0, 7);
+    router.push(clean.length === 7 ? `/play/self?pin=${clean}` : clean ? `/play?pin=${clean}` : '/play');
   };
 
   return (

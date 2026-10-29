@@ -5,3 +5,5 @@ export * from './quizzes';
 export * from './sessions';
 export * from './feedback';
 export * from './eventFeedback';
+export * from './selfPaced';
+export * from './selfSessions';
