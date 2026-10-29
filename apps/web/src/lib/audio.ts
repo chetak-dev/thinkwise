@@ -116,6 +116,8 @@ const TRACK_DEFS: Record<TrackId, TrackDef> = {
 };
 
 const LOOKAHEAD_S = 0.12;
+/** Background tabs get their timers slowed to about once a second, so plan further ahead there. */
+const HIDDEN_LOOKAHEAD_S = 1.6;
 const SCHEDULE_MS = 25;
 
 let ctx: AudioContext | null = null;
@@ -147,7 +149,6 @@ function ensureContext() {
   const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   ctx = new AC();
   ctx.addEventListener('statechange', notifyPlaying);
-  ctx.addEventListener('statechange', notifyPlaying);
   // Gentle bus compression glues the parts together and keeps peaks even on small phone speakers.
   const glue = ctx.createDynamicsCompressor();
   glue.threshold.value = -18;
@@ -155,9 +156,16 @@ function ensureContext() {
   glue.ratio.value = 3;
   glue.attack.value = 0.005;
   glue.release.value = 0.25;
-  glue.connect(ctx.destination);
+  // A hard ceiling after the glue, so music plus a loud effect never clips into crackles.
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -3;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.001;
+  limiter.release.value = 0.1;
+  glue.connect(limiter).connect(ctx.destination);
   master = ctx.createGain();
-  master.gain.value = 0.9 * volume;
+  master.gain.value = masterLevel();
   master.connect(glue);
   musicBus = ctx.createGain();
   musicBus.gain.value = 0.24;
@@ -354,7 +362,14 @@ function playStep(s: number, time: number, stepDur: number) {
 function schedule() {
   if (!ctx) return;
   const sixteenth = 60 / track.bpm / 4;
-  while (nextTime < ctx.currentTime + LOOKAHEAD_S) {
+  // After a stall (busy page, sleeping tab) skip the missed notes rather than firing them all at once.
+  if (nextTime < ctx.currentTime) {
+    const missed = Math.ceil((ctx.currentTime - nextTime) / sixteenth);
+    step += missed;
+    nextTime += missed * sixteenth;
+  }
+  const ahead = document.hidden ? HIDDEN_LOOKAHEAD_S : LOOKAHEAD_S;
+  while (nextTime < ctx.currentTime + ahead) {
     const swingOffset = step % 2 === 1 ? sixteenth * track.swing : 0;
     playStep(step, nextTime + swingOffset, sixteenth);
     nextTime += sixteenth;
@@ -363,7 +378,7 @@ function schedule() {
 }
 
 function startMusic() {
-  if (timerId !== null || !ctx || !enabled || !wantMusic) return;
+  if (timerId !== null || !ctx || !enabled || !wantMusic || yielded) return;
   step = 0;
   nextTime = ctx.currentTime + 0.08;
   timerId = window.setInterval(schedule, SCHEDULE_MS);
@@ -376,6 +391,7 @@ function stopMusic() {
 
 /** Must first be called from a user gesture (tap/click) so browsers allow audio. */
 export function setSoundEnabled(on: boolean) {
+  if (on && !enabled) claimSince = Date.now();
   enabled = on;
   if (on) {
     void ensureContext().resume();
@@ -384,7 +400,97 @@ export function setSoundEnabled(on: boolean) {
     stopMusic();
     void ctx?.suspend();
   }
+  syncAudioOwner();
   notifyPlaying();
+}
+
+// ---------- one sounding tab per device ----------
+// The host screen and the projector screen are often open side by side in the same browser. Two copies of the
+// music drift apart and sound like a stutter, so tabs agree that only the highest-priority one makes sound:
+// projector screen, then host controls, then a player's phone; the most recently opened one wins a tie.
+
+interface AudioClaim {
+  id: string;
+  priority: number;
+  since: number;
+}
+
+const CLAIM_EVERY_MS = 1000;
+const CLAIM_STALE_MS = 4000;
+const tabId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+let priority = 0;
+let claimSince = 0;
+let yielded = false;
+let channel: BroadcastChannel | null = null;
+let claimTimer: number | null = null;
+const otherClaims = new Map<string, AudioClaim & { seenAt: number }>();
+
+function masterLevel() {
+  return yielded ? 0 : 0.9 * volume;
+}
+
+const outranks = (a: AudioClaim, b: AudioClaim) =>
+  a.priority !== b.priority ? a.priority > b.priority : a.since !== b.since ? a.since > b.since : a.id > b.id;
+
+function myClaim(): AudioClaim {
+  return { id: tabId, priority, since: claimSince };
+}
+
+function updateYielded() {
+  const now = Date.now();
+  for (const [id, c] of otherClaims) if (now - c.seenAt > CLAIM_STALE_MS) otherClaims.delete(id);
+  const mine = myClaim();
+  const next = enabled && [...otherClaims.values()].some((c) => outranks(c, mine));
+  if (next === yielded) return;
+  yielded = next;
+  if (master && ctx) master.gain.setTargetAtTime(masterLevel(), ctx.currentTime, 0.05);
+  if (yielded) stopMusic();
+  else startMusic();
+}
+
+function onClaimMessage(e: MessageEvent) {
+  const msg = e.data as { t?: string } & Partial<AudioClaim>;
+  if (typeof msg?.id !== 'string' || msg.id === tabId) return;
+  if (msg.t === 'bye') otherClaims.delete(msg.id);
+  else if (msg.t === 'claim' && typeof msg.priority === 'number' && typeof msg.since === 'number') {
+    otherClaims.set(msg.id, { id: msg.id, priority: msg.priority, since: msg.since, seenAt: Date.now() });
+  }
+  updateYielded();
+}
+
+function announce() {
+  channel?.postMessage({ t: 'claim', ...myClaim() });
+  updateYielded();
+}
+
+function sayGoodbye() {
+  channel?.postMessage({ t: 'bye', id: tabId });
+}
+
+/** Starts or stops taking part in the election as sound is switched on or off. */
+function syncAudioOwner() {
+  if (typeof BroadcastChannel === 'undefined') return;
+  if (enabled) {
+    if (!channel) {
+      channel = new BroadcastChannel('tw-audio');
+      channel.addEventListener('message', onClaimMessage);
+      window.addEventListener('pagehide', sayGoodbye);
+    }
+    announce();
+    if (claimTimer === null) claimTimer = window.setInterval(announce, CLAIM_EVERY_MS);
+  } else {
+    if (claimTimer !== null) window.clearInterval(claimTimer);
+    claimTimer = null;
+    sayGoodbye();
+    updateYielded();
+  }
+}
+
+/** Higher plays first when several tabs on one device have sound on: 2 projector, 1 host, 0 player. */
+export function setAudioPriority(p: number) {
+  if (p === priority) return;
+  priority = p;
+  if (enabled) announce();
 }
 
 function isAudioPlaying() {
@@ -420,7 +526,7 @@ export function setTrack(id: TrackId) {
 
 export function setVolume(v: number) {
   volume = Math.min(1, Math.max(0, v));
-  if (master) master.gain.value = 0.9 * volume;
+  if (master) master.gain.value = masterLevel();
 }
 
 export function setMusicPlaying(play: boolean) {
@@ -430,7 +536,7 @@ export function setMusicPlaying(play: boolean) {
 }
 
 export function playSfx(name: Sfx) {
-  if (!enabled || !ctx || ctx.state !== 'running') return;
+  if (!enabled || yielded || !ctx || ctx.state !== 'running') return;
   const t = ctx.currentTime + 0.01;
   switch (name) {
     case 'join':
@@ -479,7 +585,11 @@ export function playSfx(name: Sfx) {
 }
 
 /** Keeps the shared audio engine in sync with a page's sound preference and current track. */
-export function useSound(enabledPref: boolean, trackId: TrackId | null, musicOn: boolean, vol = 1) {
+export function useSound(enabledPref: boolean, trackId: TrackId | null, musicOn: boolean, vol = 1, audioPriority = 0) {
+  useEffect(() => {
+    setAudioPriority(audioPriority);
+  }, [audioPriority]);
+
   useEffect(() => {
     setVolume(vol);
   }, [vol]);

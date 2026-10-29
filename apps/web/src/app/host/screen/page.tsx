@@ -37,7 +37,7 @@ function Projector() {
   });
 
   const stage = celebrate ? { ...state, celebration: state.celebration + celebrate } : state;
-  useStageSounds(stage, prefs.sound, { music: prefs.music, volume: prefs.volume });
+  useStageSounds(stage, prefs.sound, { music: prefs.music, volume: prefs.volume, priority: 2 });
 
   useEffect(() => {
     if (!state.pin) return;

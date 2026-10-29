@@ -6,9 +6,13 @@ import { useCountdownTicks } from '@/components/game/TimerRing';
 import type { StageState } from '@/lib/stage';
 
 /** Music and effects for screens that show the shared stage (host and projector). */
-export function useStageSounds(state: StageState, soundOn: boolean, opts: { music?: boolean; volume?: number } = {}) {
+export function useStageSounds(
+  state: StageState,
+  soundOn: boolean,
+  opts: { music?: boolean; volume?: number; priority?: number } = {},
+) {
   const musicOn = soundOn && (opts.music ?? true) && state.phase !== 'connecting' && state.phase !== 'finished';
-  useSound(soundOn, state.settings.soundtrack, musicOn, opts.volume ?? 1);
+  useSound(soundOn, state.settings.soundtrack, musicOn, opts.volume ?? 1, opts.priority ?? 1);
 
   const prevPhase = useRef(state.phase);
   const prevIndex = useRef<number | null>(null);
