@@ -17,7 +17,7 @@
     "@thinkwise/db": "^0.0.0",
     "@thinkwise/shared": "*",
     "lucide-react": "^1.55.0",
-    "next": "^16.0.0",
+    "next": "^16.4.3",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
