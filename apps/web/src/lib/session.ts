@@ -3,7 +3,7 @@ import 'server-only';
 import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { getDb, getSessionUser, type PublicUser } from '@thinkwise/db';
+import { canHost, getDb, getSessionUser, isSiteAdmin, type PublicUser } from '@thinkwise/db';
 
 export const SESSION_COOKIE = 'tw_session';
 
@@ -12,10 +12,28 @@ export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   return getSessionUser(getDb(), token);
 });
 
+export function getAccess(user: PublicUser | null) {
+  return { canHost: canHost(user), siteAdmin: isSiteAdmin(user) };
+}
+
 /** For pages that need a signed-in host. */
 export async function requireUser(next = '/dashboard'): Promise<PublicUser> {
   const user = await getCurrentUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(next)}`);
+  return user;
+}
+
+/** For pages only admins may open; everyone else goes back to the dashboard. */
+export async function requireHost(next = '/dashboard'): Promise<PublicUser> {
+  const user = await requireUser(next);
+  if (!canHost(user)) redirect('/dashboard');
+  return user;
+}
+
+/** For pages only site admins may open. */
+export async function requireSiteAdmin(next = '/dashboard'): Promise<PublicUser> {
+  const user = await requireUser(next);
+  if (!isSiteAdmin(user)) redirect('/dashboard');
   return user;
 }
 

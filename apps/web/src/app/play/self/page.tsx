@@ -175,6 +175,19 @@ function SelfFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, index]);
 
+  // Leaving the page while answering is counted for the host.
+  useEffect(() => {
+    if (!active || !pin) return;
+    const onHide = () => {
+      const tok = localStorage.getItem(tokenKey(pin));
+      if (document.visibilityState !== 'hidden' || !tok || submitting.current) return;
+      const body = JSON.stringify({ action: 'away', token: tok });
+      if (!navigator.sendBeacon?.('/api/self', new Blob([body], { type: 'application/json' }))) void post({ action: 'away', token: tok });
+    };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+  }, [active, pin]);
+
   useSound(prefs.sound, state?.track ?? null, prefs.sound && prefs.music && active, prefs.volume);
   const audioPlaying = useAudioPlaying();
   const toggleSound = () => {

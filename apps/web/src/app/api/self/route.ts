@@ -2,6 +2,7 @@ import {
   getDb,
   joinSelf,
   openSelfQuestion,
+  recordSelfAway,
   saveSelfAnswer,
   selfInfo,
   selfPlayerState,
@@ -70,13 +71,16 @@ export async function POST(request: Request) {
     }
     case 'open':
     case 'save':
+    case 'away':
     case 'submit': {
       const result =
         body.action === 'open'
           ? await openSelfQuestion(db, token, index)
           : body.action === 'save'
             ? await saveSelfAnswer(db, token, index, body.answer ?? null)
-            : await submitSelf(db, token);
+            : body.action === 'away'
+              ? await recordSelfAway(db, token)
+              : await submitSelf(db, token);
       if (result.ok) return json(result);
       return json({ error: result.reason }, result.reason === 'not_found' ? 404 : result.reason === 'locked' ? 409 : 422);
     }

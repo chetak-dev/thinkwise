@@ -14,6 +14,7 @@ import {
 import { useHostQuiz } from '@/lib/hostQuiz';
 import { formatDate } from '@/lib/time';
 import { StartSessionDialog } from '@/components/StartSessionDialog';
+import { useAccess } from '@/components/AccessProvider';
 import { TypeToConfirm, confirmMatches } from '@/components/TypeToConfirm';
 
 // One brand family, so a page of cards reads as a set rather than a paint chart.
@@ -52,6 +53,7 @@ export function QuizCard({ quiz, timeZone }: { quiz: QuizCardData; timeZone: str
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [typed, setTyped] = useState('');
   const [startOpen, setStartOpen] = useState(false);
+  const { canHost: canHostQuiz } = useAccess();
   const [favourite, setFavourite] = useState(quiz.favourite);
   const [busy, startTransition] = useTransition();
   const { host, pending: hosting, failure } = useHostQuiz(quiz.owned ? 'draft' : 'published');
@@ -254,6 +256,7 @@ export function QuizCard({ quiz, timeZone }: { quiz: QuizCardData; timeZone: str
             </div>
           )}
         </div>
+        {canHostQuiz && (
         <button
           type="button"
           disabled={hosting}
@@ -263,6 +266,7 @@ export function QuizCard({ quiz, timeZone }: { quiz: QuizCardData; timeZone: str
           {hosting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
           Host
         </button>
+        )}
         </div>
       </div>
 

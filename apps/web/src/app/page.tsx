@@ -32,51 +32,51 @@ const DEMO_ANSWERS = [
 
 const FEATURES = [
   {
-    Icon: Users,
-    title: 'Hundreds in one room',
-    body: 'Run a single class or a packed auditorium. The game server is built to keep every phone in sync.',
-  },
-  {
     Icon: QrCode,
     title: 'PIN, QR or link',
-    body: 'Players scan or type six digits and pick a nickname. Nothing to install, nothing to sign up for.',
+    body: 'Type the PIN, scan the code or tap the link you were sent, then pick a nickname. Nothing to install.',
+  },
+  {
+    Icon: Users,
+    title: 'No account needed',
+    body: 'Players never sign up. Just join, answer and see how you did.',
+  },
+  {
+    Icon: Zap,
+    title: 'Live with the room',
+    body: 'In a live game everyone answers together, and the leaderboard shifts after every question.',
   },
   {
     Icon: Timer,
-    title: 'Fair timing',
-    body: 'The clock and the scoring run on the server, so a slow phone never costs anyone points.',
+    title: 'Or in your own time',
+    body: 'Self-paced quizzes stay open for a while. Start when it suits you, move between questions and review before you submit.',
   },
   {
     Icon: Layers,
-    title: 'Ten ways to ask',
-    body: 'Single or multiple answers, true/false, typed and numeric answers, ordering, polls, word clouds and ratings.',
-  },
-  {
-    Icon: BarChart3,
-    title: 'Results you can use',
-    body: 'See which questions tripped people up and how each player did, then export the numbers.',
+    title: 'Ten ways to answer',
+    body: 'Pick one or several, true/false, type a word or number, put things in order, vote in polls and more.',
   },
   {
     Icon: Lock,
     title: 'Nicknames only',
-    body: 'Players never share personal details, and correct answers stay on the server until the reveal.',
+    body: 'You never share personal details, and correct answers stay hidden until it’s time to reveal them.',
   },
   {
     Icon: Globe2,
     title: 'English, हिन्दी, ଓଡ଼ିଆ',
-    body: 'Players choose their language on the join screen. More languages can be added later.',
+    body: 'Choose your language on the join screen.',
   },
   {
-    Icon: Sparkles,
-    title: 'Loud or low-key',
-    body: 'Go all-in with streaks and a podium, or switch to a calm, accuracy-only session for revision.',
+    Icon: BarChart3,
+    title: 'See how you did',
+    body: 'Your score, your place and the right answers, once the quiz is over.',
   },
 ];
 
 const STEPS = [
-  { title: 'Build', body: 'Write your questions, set a timer and points for each, and preview them on a phone.' },
-  { title: 'Run', body: 'Put the PIN on the big screen, wait for names to roll in, then move through the questions at your pace.' },
-  { title: 'Review', body: 'Look back at every answer, spot the tricky topics and share the results with your group.' },
+  { title: 'Get the PIN or link', body: 'Your teacher or organiser shares it on the screen, in class or in a message.' },
+  { title: 'Pick a nickname', body: 'Enter the PIN (or open the link), choose a name and an avatar, and you’re in.' },
+  { title: 'Answer and climb', body: 'Answer on your own phone, then see your score, your place and the right answers.' },
 ];
 
 export default async function Home() {
@@ -94,24 +94,18 @@ export default async function Home() {
       <header className="glass-panel mx-3 mt-3 flex items-center justify-between gap-2 rounded-2xl px-2.5 py-3 min-[360px]:px-3 sm:px-6 xl:mx-auto xl:max-w-7xl">
         <Logo className="shrink-0 max-[359px]:text-base min-[360px]:max-sm:text-lg" />
         <nav aria-label="Account" className="flex min-w-0 items-center gap-1 sm:gap-2">
-          <Link href="/play" className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-muted hover:bg-surface-2 sm:inline-flex">
-            Join a game
-          </Link>
           {user ? (
-            <Link href="/dashboard" className={BTN_SM}>
-              Open dashboard
+            <Link href="/dashboard" className="whitespace-nowrap rounded-xl px-2 py-2 text-sm font-semibold text-app hover:bg-surface-2 min-[360px]:px-2.5 sm:px-3">
+              Dashboard
             </Link>
           ) : (
-            <>
-              <Link href="/login" className="whitespace-nowrap rounded-xl px-2 py-2 text-sm font-semibold text-app hover:bg-surface-2 min-[360px]:px-2.5 sm:px-3">
-                Sign in
-              </Link>
-              <Link href="/register" className={`${BTN_SM} max-sm:px-3`}>
-                <span className="sm:hidden">Sign up</span>
-                <span className="hidden sm:inline">Create free account</span>
-              </Link>
-            </>
+            <Link href="/login" className="whitespace-nowrap rounded-xl px-2 py-2 text-sm font-semibold text-app hover:bg-surface-2 min-[360px]:px-2.5 sm:px-3">
+              Sign in
+            </Link>
           )}
+          <Link href="/play" className={`${BTN_SM} max-sm:px-3`}>
+            Join a quiz
+          </Link>
         </nav>
       </header>
 
@@ -120,22 +114,22 @@ export default async function Home() {
           <div className="min-w-0 animate-rise">
             <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-nova-100 px-3 py-1 text-sm font-semibold text-nova-800 dark:bg-nova-900/60 dark:text-nova-200">
               <Sparkles className="size-4" aria-hidden="true" />
-              Live quiz games for classrooms, campuses and events
+              Live and self-paced quizzes for classrooms, campuses and events
             </p>
             <h1 className="font-display text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
-              Make every answer a moment <span className="nova-text">the whole room feels.</span>
+              Got a PIN? <span className="nova-text">Jump straight in.</span>
             </h1>
             <p className="mt-6 max-w-xl text-lg text-muted">
-              Put a question on the big screen and watch the room react. Players answer on their own phones, the
-              leaderboard shifts after every round, and nobody needs an account to play.
+              Enter the PIN or open the link your organiser shared, pick a nickname and start answering on your phone. No
+              account, no app, no sign-up.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link href={user ? '/dashboard' : '/register'} className={BTN_PRIMARY_LG}>
-                Host a free game
+              <Link href="/play" className={BTN_PRIMARY_LG}>
+                Join a quiz
               </Link>
-              <Link href="/play" className={BTN_OUTLINE_LG}>
-                I have a PIN
-              </Link>
+              <a href="#organisers" className={BTN_OUTLINE_LG}>
+                I’m an organiser
+              </a>
             </div>
           </div>
 
@@ -174,10 +168,10 @@ export default async function Home() {
         <section aria-labelledby="features-heading" className="border-y border-app bg-surface py-20">
           <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <h2 id="features-heading" className="max-w-2xl font-display text-3xl font-bold sm:text-4xl">
-              Made for busy classrooms and big halls alike.
+              Simple to join, fun to play.
             </h2>
             <p className="mt-3 max-w-2xl text-muted">
-              Everything a host needs to run a lively quiz, and nothing that gets in the players’ way.
+              Whether it’s a packed hall answering together or a quiz you take in your own time, joining takes seconds.
             </p>
             <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {FEATURES.map(({ Icon, title, body }) => (
@@ -191,7 +185,10 @@ export default async function Home() {
           </div>
         </section>
 
-        <section aria-label="How it works" className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
+        <section aria-labelledby="how-heading" className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
+          <h2 id="how-heading" className="mb-10 font-display text-3xl font-bold sm:text-4xl">
+            How to play
+          </h2>
           <div className="grid gap-8 md:grid-cols-3">
             {STEPS.map((step, i) => (
               <div key={step.title}>
@@ -204,6 +201,27 @@ export default async function Home() {
             ))}
           </div>
         </section>
+
+        <section id="organisers" aria-labelledby="organisers-heading" className="mx-auto max-w-7xl scroll-mt-6 px-4 pb-20 sm:px-6">
+          <div className="glass-panel flex flex-col gap-6 rounded-3xl p-6 sm:p-8 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-2xl">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-nova-700 dark:text-nova-300">
+                <Sparkles className="size-4" aria-hidden="true" />
+                For organisers
+              </p>
+              <h2 id="organisers-heading" className="mt-2 font-display text-2xl font-bold sm:text-3xl">
+                Running a quiz?
+              </h2>
+              <p className="mt-2 text-muted">
+                Hosting live and self-paced quizzes is open to approved organisers. Sign in to your account; if you need host
+                access, ask your site admin to turn it on for you.
+              </p>
+            </div>
+            <Link href={user ? '/dashboard' : '/login'} className={`${BTN_OUTLINE_LG} shrink-0`}>
+              {user ? 'Open dashboard' : 'Organiser sign in'}
+            </Link>
+          </div>
+        </section>
       </main>
 
       <footer className="border-t border-app py-8">
@@ -211,10 +229,10 @@ export default async function Home() {
           <Logo className="text-xl text-app" />
           <nav aria-label="Footer" className="flex gap-4">
             <Link href="/play" className="hover:text-app">
-              Join a game
+              Join a quiz
             </Link>
-            <Link href="/host" className="hover:text-app">
-              Host a game
+            <Link href={user ? '/dashboard' : '/login'} className="hover:text-app">
+              Organiser sign in
             </Link>
             <Link href="/privacy" className="hover:text-app">
               Privacy

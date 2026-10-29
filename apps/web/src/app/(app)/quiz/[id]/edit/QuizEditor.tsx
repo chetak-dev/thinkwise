@@ -62,6 +62,7 @@ import {
 } from '@thinkwise/shared';
 import { publishQuizAction, saveQuizAction, type PublishActionResult } from '@/app/(app)/quiz-actions';
 import { useHostQuiz } from '@/lib/hostQuiz';
+import { useAccess } from '@/components/AccessProvider';
 import { answerStyle } from '@/components/game/answers';
 import { QuestionImage } from '@/components/game/QuestionImage';
 import { QuestionText } from '@/components/game/QuestionText';
@@ -149,6 +150,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
   const [publishFailure, setPublishFailure] = useState<Extract<PublishActionResult, { ok: false }> | null>(null);
   const [startOpen, setStartOpen] = useState(false);
   const { host, pending: hosting, failure, clearFailure } = useHostQuiz();
+  const { canHost: canHostQuiz } = useAccess();
 
   const commit = useCallback((change: (doc: Doc) => Doc, groupKey: string | null = null) => {
     const now = Date.now();
@@ -535,6 +537,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
           )}
           <span aria-live="polite">{justPublished ? 'Published' : isPublished ? 'Publish update' : 'Publish'}</span>
         </button>
+        {canHostQuiz && (
         <button
           type="button"
           disabled={hosting}
@@ -544,6 +547,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
           {hosting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
           Host
         </button>
+        )}
       </header>
 
       {shownFailure && (

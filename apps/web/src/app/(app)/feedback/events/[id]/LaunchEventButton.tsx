@@ -4,10 +4,12 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, Loader2, Rocket } from 'lucide-react';
 import { rememberHostSession } from '@/lib/hostQuiz';
+import { useAccess } from '@/components/AccessProvider';
 import { launchFeedbackEventAction } from '../../actions';
 
 export function LaunchEventButton({ eventId, disabled }: { eventId: string; disabled?: boolean }) {
   const router = useRouter();
+  const { canHost } = useAccess();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -23,6 +25,8 @@ export function LaunchEventButton({ eventId, disabled }: { eventId: string; disa
       router.push('/host');
     });
   };
+
+  if (!canHost) return null;
 
   return (
     <div className="flex flex-col items-end gap-2">

@@ -19,6 +19,8 @@ export const users = pgTable('users', {
   /** Google's stable account id (the OpenID `sub`), once linked. */
   googleId: text('google_id').unique(),
   role: text('role', { enum: ['host', 'org_admin'] }).notNull().default('host'),
+  /** Granted by a site admin; site admins (see SITE_ADMIN_EMAILS) can always host. */
+  canHost: boolean('can_host').notNull().default(false),
   orgId: uuid('org_id').references(() => organisations.id, { onDelete: 'set null' }),
   locale: text('locale').notNull().default('en'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -48,7 +50,7 @@ export const auditLog = pgTable(
     meta: jsonb('meta'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('audit_org_created_idx').on(t.orgId, t.createdAt)],
+  (t) => [index('audit_org_created_idx').on(t.orgId, t.createdAt), index('audit_created_idx').on(t.createdAt)],
 );
 
 export type User = typeof users.$inferSelect;
@@ -198,6 +200,10 @@ export const selfAttempts = pgTable(
     answers: jsonb('answers').notNull().default({}),
     score: integer('score').notNull().default(0),
     correctCount: integer('correct_count').notNull().default(0),
+    /** This participant's own order when the session shuffles per participant: { q: [quiz index by position], o: { [quiz index]: [option by position] } }. */
+    layout: jsonb('layout'),
+    /** Times the participant left the quiz page (switched tab or app) while answering. */
+    tabSwitches: integer('tab_switches').notNull().default(0),
   },
   (t) => [
     index('self_attempts_session_idx').on(t.sessionId),

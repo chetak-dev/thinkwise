@@ -12,6 +12,7 @@ import {
   Menu,
   MessageSquareHeart,
   Plus,
+  ShieldCheck,
   SlidersHorizontal,
   X,
   type LucideIcon,
@@ -22,6 +23,7 @@ import { Modal } from '@/components/Modal';
 import { logoutAction } from '@/app/(auth)/actions';
 import { createQuizAction } from '@/app/(app)/quiz-actions';
 import { SampleHostLink } from '@/components/SampleHostLink';
+import { useAccess } from '@/components/AccessProvider';
 
 interface NavItem {
   href: string;
@@ -57,6 +59,8 @@ function SidebarContent({
   onSignOut: () => void;
 }) {
   const pathname = usePathname();
+  const { siteAdmin } = useAccess();
+  const nav = siteAdmin ? [...NAV.slice(0, 4), { href: '/admin', label: 'Admin', Icon: ShieldCheck, ready: true }, ...NAV.slice(4)] : NAV;
   // In the collapsed rail only icons show; text fades in when the rail expands on hover or keyboard focus.
   const label = rail
     ? 'whitespace-nowrap opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100 group-has-[:focus-visible]/rail:opacity-100'
@@ -92,9 +96,10 @@ function SidebarContent({
       </div>
 
       <nav aria-label="Main" className="space-y-1">
-        {NAV.map(({ href, label: text, Icon, ready }) => {
+        {nav.map(({ href, label: text, Icon, ready }) => {
           const active =
             pathname === href ||
+            (href === '/admin' && pathname.startsWith('/admin/')) ||
             (href === '/library' && pathname.startsWith('/quiz/')) ||
             (href === '/reports' && pathname.startsWith('/reports/')) ||
             (href === '/feedback' && pathname.startsWith('/feedback/'));

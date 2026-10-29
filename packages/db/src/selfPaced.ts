@@ -218,6 +218,98 @@ export function totalTimeMs(quiz: SelfQuiz) {
   return quiz.questions.reduce((sum, q) => sum + q.timeLimitMs, 0);
 }
 
+/**
+ * One participant's own order. Answers are always stored against the quiz's order, so marking and reports
+ * don't change; only what the participant sees (and sends) is in their order.
+ */
+export interface SelfLayout {
+  /** q[position] = index of the question in the quiz. */
+  q: number[];
+  /** o[quiz index][shown position] = option index in the quiz. */
+  o: Record<string, number[]>;
+}
+
+export function makeLayout(quiz: SelfQuiz): SelfLayout {
+  const o: Record<string, number[]> = {};
+  quiz.questions.forEach((q, i) => {
+    if (q.type === 'tf' || q.options.length < 2) return;
+    o[String(i)] = shuffled(q.options.map((_, k) => k));
+  });
+  return { q: shuffled(quiz.questions.map((_, i) => i)), o };
+}
+
+/** Reads a stored layout, falling back to the quiz's own order if it doesn't fit this quiz. */
+export function readLayout(raw: unknown, count: number): SelfLayout | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { q, o } = raw as Partial<SelfLayout>;
+  if (!Array.isArray(q) || q.length !== count || new Set(q).size !== count || q.some((i) => !Number.isInteger(i) || i < 0 || i >= count)) {
+    return null;
+  }
+  return { q, o: o && typeof o === 'object' ? o : {} };
+}
+
+/** The participant's view of the quiz: positions and option order, both ways. */
+export class LayoutView {
+  constructor(
+    private readonly layout: SelfLayout | null,
+    private readonly quiz: SelfQuiz,
+  ) {}
+
+  /** Quiz index of the question shown at this position. */
+  quizIndex(position: number) {
+    return this.layout ? this.layout.q[position] : position;
+  }
+
+  position(quizIndex: number) {
+    return this.layout ? this.layout.q.indexOf(quizIndex) : quizIndex;
+  }
+
+  private perm(quizIndex: number) {
+    const p = this.layout?.o[String(quizIndex)];
+    return p && p.length === this.quiz.questions[quizIndex]?.options.length ? p : null;
+  }
+
+  /** Shown option → quiz option. */
+  toQuizOption(quizIndex: number, shown: number) {
+    const p = this.perm(quizIndex);
+    return p ? (p[shown] ?? -1) : shown;
+  }
+
+  /** Quiz option → shown option. */
+  toShownOption(quizIndex: number, option: number) {
+    const p = this.perm(quizIndex);
+    return p ? p.indexOf(option) : option;
+  }
+
+  toQuizInput(quizIndex: number, input: SelfAnswerInput): SelfAnswerInput {
+    if (!this.perm(quizIndex)) return input;
+    return {
+      ...input,
+      ...(input.choice !== undefined ? { choice: this.toQuizOption(quizIndex, input.choice) } : {}),
+      ...(input.choices ? { choices: input.choices.map((c) => this.toQuizOption(quizIndex, c)) } : {}),
+    };
+  }
+
+  toShownAnswer(quizIndex: number, answer: PlayerAnswer): PlayerAnswer {
+    if (!this.perm(quizIndex)) return answer;
+    return { ...answer, choices: answer.choices.map((c) => this.toShownOption(quizIndex, c)) };
+  }
+
+  question(position: number): PublicQuestion {
+    const qi = this.quizIndex(position)!;
+    const base = publicQuestion(this.quiz, qi);
+    const p = this.perm(qi);
+    return { ...base, index: position, options: p ? p.map((k) => base.options[k]!) : base.options };
+  }
+
+  /** Right options as shown to this participant (order questions keep their sequence). */
+  shownCorrect(quizIndex: number) {
+    const q = this.quiz.questions[quizIndex]!;
+    const shown = q.correct.map((c) => this.toShownOption(quizIndex, c));
+    return q.type === 'order' ? shown : shown.sort((a, b) => a - b);
+  }
+}
+
 export function publicQuestion(quiz: SelfQuiz, index: number): PublicQuestion {
   const q = quiz.questions[index]!;
   return {

@@ -31,7 +31,7 @@ export const LoginInput = z.object({
   password: z.string().min(1).max(200),
 });
 
-export type PublicUser = Pick<User, 'id' | 'email' | 'name' | 'role' | 'orgId' | 'locale'>;
+export type PublicUser = Pick<User, 'id' | 'email' | 'name' | 'role' | 'orgId' | 'locale' | 'canHost'>;
 
 const publicColumns = {
   id: users.id,
@@ -40,6 +40,7 @@ const publicColumns = {
   role: users.role,
   orgId: users.orgId,
   locale: users.locale,
+  canHost: users.canHost,
 };
 
 export function hashToken(token: string) {

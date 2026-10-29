@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import {
+  canHost,
   createFeedbackEvent,
   createFeedbackForm,
   createGameSession,
@@ -73,6 +74,7 @@ export type LaunchResult = { ok: true; gameId: string; hostToken: string; quizId
 /** Opens a live lobby for the event's quiz; each launch is recorded as its own session. */
 export async function launchFeedbackEventAction(id: string): Promise<LaunchResult> {
   const user = await requireUser();
+  if (!canHost(user)) return { ok: false, error: 'Only admins can launch events. Ask a site admin for access.' };
   const db = getDb();
   const event = await getFeedbackEvent(db, user.id, id);
   if (!event) return { ok: false, error: 'This event no longer exists.' };

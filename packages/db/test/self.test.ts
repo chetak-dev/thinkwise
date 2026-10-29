@@ -120,8 +120,11 @@ test('time running out submits the attempt; closing finalises results into the r
   assert.equal(late?.result?.score, 2000);
 
   assert.equal(await self.closeSelfSession(db, other.id, id, at(7 * MIN)), false);
-  assert.equal(await self.setSelfClosesAt(db, host.id, id, at(-MIN), at(7 * MIN)), false, 'no closing in the past');
-  assert.ok(await self.setSelfClosesAt(db, host.id, id, at(8 * MIN), at(7 * MIN)));
+  assert.deepEqual(await self.updateSelfSettings(db, host.id, id, { closesAt: at(-MIN) }, at(7 * MIN)), { ok: false, error: 'The closing time must be in the future and after the opening time.' });
+  assert.deepEqual(await self.updateSelfSettings(db, host.id, id, { timeLimitMs: 1000 }, at(7 * MIN)), { ok: false, error: 'The time limit must be between 1 minute and 24 hours.' });
+  assert.equal((await self.updateSelfSettings(db, host.id, id, { opensAt: at(9 * MIN) }, at(7 * MIN))).ok, false, 'already open');
+  assert.equal((await self.updateSelfSettings(db, other.id, id, { title: 'Mine' }, at(7 * MIN))).ok, false, 'only the host');
+  assert.ok((await self.updateSelfSettings(db, host.id, id, { closesAt: at(8 * MIN), title: '  Renamed   quiz ' }, at(7 * MIN))).ok);
   assert.equal((await self.selfInfo(db, pin, at(9 * MIN)))?.state, 'closed', 'closes on its own once the time passes');
   assert.deepEqual(await self.joinSelf(db, pin, 'Late', '🦊', at(9 * MIN)), { ok: false, reason: 'closed' });
 
@@ -136,6 +139,71 @@ test('time running out submits the attempt; closing finalises results into the r
   assert.equal(final?.final?.players, 2);
   assert.deepEqual(final?.final?.review[0]?.correct, [1]);
   assert.equal(final?.final?.review[0]?.isCorrect, true);
+  assert.equal(final?.title, 'Renamed quiz');
+
+  assert.equal((await self.updateSelfSettings(db, host.id, id, { closesAt: at(60 * MIN) }, at(10 * MIN))).ok, false, 'timing is fixed once closed');
+  assert.ok((await self.updateSelfSettings(db, host.id, id, { showLeaderboard: false, showCorrect: false }, at(10 * MIN))).ok);
+  const hidden = await self.selfPlayerState(db, b.token, at(10 * MIN));
+  assert.deepEqual(hidden?.final?.top, []);
+  assert.deepEqual(hidden?.final?.review[0]?.correct, []);
+
+  const sheet = await self.selfExport(db, host.id, id, at(10 * MIN));
+  assert.deepEqual(sheet?.rows.map((r) => [r.rank, r.nickname, r.score]), [[1, 'Asha', 2000], [2, 'Bala', 1000]]);
+  assert.equal(sheet?.rows[0]?.answers[0]?.answer, 'B');
+  assert.equal(sheet?.rows[0]?.answers[3]?.answer, 'True');
+  assert.equal(sheet?.rows[0]?.answers[1], null);
+  assert.equal(await self.selfExport(db, other.id, id, at(10 * MIN)), null);
+
+  const again = await self.reopenSelfSession(db, host, id, { opensAt: at(10 * MIN), closesAt: at(70 * MIN) }, at(10 * MIN));
+  assert.ok(again.ok);
+  const fresh = await self.selfHostView(db, host.id, again.id, at(11 * MIN));
+  assert.equal(fresh?.title, 'Renamed quiz');
+  assert.equal(fresh?.participants.length, 0);
+  assert.equal(fresh?.timeLimitMs, 5 * MIN);
+  assert.equal(fresh?.showLeaderboard, false, 'keeps the settings');
+});
+
+test('shuffle for each participant: positions map back to the quiz, scores are unaffected', async () => {
+  const many = PlayableQuiz.parse({
+    ...quiz,
+    questions: Array.from({ length: 8 }, (_, i) => ({
+      type: 'mc', text: `Q${i}?`, options: ['A', 'B', 'C', 'D'], correct: [i % 4], timeLimitMs: 20_000, points: 1000,
+    })),
+  });
+  const { id, pin } = await self.createSelfSession(db, host, {
+    quizId: null, title: 'Shuffled', quiz: many, opensAt: T0, closesAt: at(60 * MIN), timeLimitMs: 10 * MIN, shuffleEach: true,
+  });
+  const j = await self.joinSelf(db, pin, 'Kiran', '🦊', at(MIN));
+  assert.ok(j.ok);
+  const st = await self.selfPlayerState(db, j.token, at(MIN));
+  assert.ok(st);
+  // Answer every question correctly by finding the right option text in the shown order.
+  for (const [pos, q] of st.questions.entries()) {
+    const qi = Number(q.text.slice(1, -1));
+    const want = ['A', 'B', 'C', 'D'][qi % 4]!;
+    const r = await self.saveSelfAnswer(db, j.token, pos, { choice: q.options.indexOf(want) }, at(MIN + 1000));
+    assert.ok(r.ok);
+    if (r.ok) assert.deepEqual(r.answer, { choices: [q.options.indexOf(want)] }, 'answers come back in the shown order');
+  }
+  assert.ok((await self.recordSelfAway(db, j.token, at(MIN + 2000))).ok);
+  assert.ok((await self.recordSelfAway(db, j.token, at(MIN + 3000))).ok);
+  assert.ok((await self.submitSelf(db, j.token, at(2 * MIN))).ok);
+  assert.deepEqual(await self.recordSelfAway(db, j.token, at(2 * MIN)), { ok: false, reason: 'locked' });
+  const mine = await self.selfPlayerState(db, j.token, at(2 * MIN));
+  assert.equal(mine?.result?.correctCount, 8);
+  const view = await self.selfHostView(db, host.id, id, at(2 * MIN));
+  assert.equal(view?.shuffleEach, true);
+  assert.equal(view?.participants[0]?.tabSwitches, 2);
+  assert.equal(view?.participants[0]?.timeTakenMs, MIN);
+
+  assert.ok(await self.closeSelfSession(db, host.id, id, at(3 * MIN)));
+  const fin = await self.selfPlayerState(db, j.token, at(3 * MIN));
+  for (const item of fin!.final!.review) {
+    const q = fin!.questions[item.index]!;
+    const qi = Number(q.text.slice(1, -1));
+    assert.deepEqual(item.correct.map((c) => q.options[c]), [['A', 'B', 'C', 'D'][qi % 4]], 'correct option shown in their order');
+    assert.equal(item.isCorrect, true);
+  }
 });
 
 test('a host can close a session early; an empty session counts as abandoned', async () => {

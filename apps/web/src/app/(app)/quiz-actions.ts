@@ -8,6 +8,7 @@ import {
   SELF_LIMIT_MIN_MS,
   SELF_WINDOW_MAX_MS,
   arrangeQuiz,
+  canHost,
   copyQuiz,
   createGameSession,
   createQuiz,
@@ -132,7 +133,14 @@ export interface StartOptions {
   closesAt?: unknown;
   /** Self-paced only: each participant's time to finish. */
   timeLimitMs?: unknown;
+  /** Self-paced only: each participant gets their own question and option order. */
+  shuffleEach?: unknown;
+  /** Self-paced only: overrides the quiz's own settings. */
+  showLeaderboard?: unknown;
+  showCorrect?: unknown;
 }
+
+const NO_HOST_ACCESS = 'Only admins can host quizzes. Ask a site admin for access.';
 
 /** Untrusted options from the start dialog, reduced to what the game server accepts. */
 function startOptions(options?: StartOptions) {
@@ -163,14 +171,26 @@ async function startSelf(
   if (limit < SELF_LIMIT_MIN_MS || limit > SELF_LIMIT_MAX_MS) {
     return { ok: false, error: 'The time limit must be between 1 minute and 24 hours.' };
   }
+  const shuffleEach = options?.shuffleEach === true;
+  const rules = {
+    ...quiz.rules,
+    ...(typeof options?.showLeaderboard === 'boolean' ? { showLeaderboard: options.showLeaderboard } : {}),
+    ...(typeof options?.showCorrect === 'boolean' ? { showCorrect: options.showCorrect } : {}),
+  };
+  // With a per-participant shuffle the session keeps the quiz's own order, so reports read in that order.
+  const arranged = arrangeQuiz({
+    ...quiz,
+    rules: shuffleEach ? { ...rules, shuffleQuestions: false, shuffleOptions: false } : rules,
+  });
   const session = await createSelfSession(getDb(), user, {
     quizId,
     title: quiz.title,
-    quiz: arrangeQuiz(quiz),
+    quiz: { ...arranged, rules: { ...arranged.rules, shuffleQuestions: rules.shuffleQuestions, shuffleOptions: rules.shuffleOptions } },
     opensAt: new Date(opensAt),
     closesAt: new Date(closesAt),
     timeLimitMs: Math.round(limit),
     soundtrack: 'ocean-drive',
+    shuffleEach,
   });
   revalidatePath('/dashboard');
   revalidatePath('/reports');
@@ -179,6 +199,7 @@ async function startSelf(
 
 export async function hostQuizAction(id: string, options?: StartOptions): Promise<HostResult> {
   const user = await requireUser();
+  if (!canHost(user)) return { ok: false, error: NO_HOST_ACCESS };
   const quiz = await getQuiz(getDb(), user.id, id);
   if (!quiz) return { ok: false, error: 'This quiz no longer exists.' };
   const check = toPlayable(quiz.title, quiz.questions, quiz.settings);
@@ -205,6 +226,7 @@ export async function hostQuizAction(id: string, options?: StartOptions): Promis
 /** Hosts the published copy of a quiz shared with (or owned by) the signed-in host. */
 export async function hostPublishedQuizAction(id: string, options?: StartOptions): Promise<HostResult> {
   const user = await requireUser();
+  if (!canHost(user)) return { ok: false, error: NO_HOST_ACCESS };
   const quiz = await getHostablePublished(getDb(), user.id, id);
   if (!quiz) return { ok: false, error: 'This quiz isn’t available to host.' };
   if (options?.mode === 'self') return startSelf(user, id, quiz, options);

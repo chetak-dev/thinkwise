@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getDb, selfHostView } from '@thinkwise/db';
-import { requireUser } from '@/lib/session';
+import { getAccess, requireUser } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { SelfHostPanel } from './SelfHostPanel';
 
@@ -12,5 +12,5 @@ export default async function SelfSessionPage({ params }: { params: Promise<{ id
   const user = await requireUser(`/self/${id}`);
   const [view, timeZone] = await Promise.all([selfHostView(getDb(), user.id, id), getTimeZone()]);
   if (!view) notFound();
-  return <SelfHostPanel view={view} timeZone={timeZone} />;
+  return <SelfHostPanel view={view} timeZone={timeZone} canHost={getAccess(user).canHost} />;
 }

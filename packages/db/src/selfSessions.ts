@@ -5,13 +5,15 @@ import { AVATARS, NICKNAME_MAX, TRACK_IDS, isScored, type AnswerKey, type Player
 import type { Db } from './client';
 import { auditLog, gameSessions, selfAttempts, sessionPlayers } from './schema';
 import {
+  LayoutView,
   SELF_GRACE_MS,
   SelfAnswerInput,
   answerKey,
   judgeAnswer,
+  makeLayout,
   playerAnswer,
-  publicQuestion,
   publicRules,
+  readLayout,
   resultQuestions,
   scoreAttempt,
   type SelfEntries,
@@ -77,6 +79,22 @@ export interface CreateSelfSession {
   timeLimitMs: number;
   /** Music participants hear while answering. */
   soundtrack?: TrackId;
+  /** Each participant gets their own question and option order. */
+  shuffleEach?: boolean;
+}
+
+/** Session options kept alongside the quiz in the jsonb column. */
+interface SessionExtras {
+  soundtrack?: TrackId;
+  shuffleEach?: boolean;
+}
+
+function extrasOf(quiz: unknown): SessionExtras {
+  const raw = (quiz ?? {}) as { soundtrack?: unknown; shuffleEach?: unknown };
+  return {
+    soundtrack: TRACK_IDS.find((id) => id === raw.soundtrack),
+    shuffleEach: raw.shuffleEach === true,
+  };
 }
 
 /** Opens a self-paced session with a 7-digit PIN (live games use 6 digits, so the two never clash). */
@@ -103,7 +121,11 @@ export async function createSelfSession(db: Db, host: { id: string; orgId: strin
         opensAt: input.opensAt,
         closesAt: input.closesAt,
         timeLimitMs: input.timeLimitMs,
-        quiz: input.soundtrack ? { ...input.quiz, soundtrack: input.soundtrack } : input.quiz,
+        quiz: {
+          ...input.quiz,
+          ...(input.soundtrack ? { soundtrack: input.soundtrack } : {}),
+          ...(input.shuffleEach ? { shuffleEach: true } : {}),
+        },
       })
       .returning({ id: gameSessions.id });
     await db.insert(auditLog).values({ orgId: host.orgId, userId: host.id, action: 'session.create', meta: { sessionId: row!.id } });
@@ -247,9 +269,11 @@ export async function joinSelf(db: Db, pin: string, nickname: string, avatar: st
   const state = stateOf(s, now);
   if (state !== 'open') return { ok: false, reason: state };
   const token = randomBytes(24).toString('base64url');
+  const quiz = s.quiz as SelfQuiz;
+  const layout = extrasOf(s.quiz).shuffleEach ? makeLayout(quiz) : null;
   const [row] = await db
     .insert(selfAttempts)
-    .values({ sessionId: s.id, tokenHash: hashToken(token), nickname: name, avatar, startedAt: now })
+    .values({ sessionId: s.id, tokenHash: hashToken(token), nickname: name, avatar, startedAt: now, layout })
     .onConflictDoNothing()
     .returning({ id: selfAttempts.id });
   return row ? { ok: true, token } : { ok: false, reason: 'name_taken' };
@@ -337,12 +361,14 @@ export async function selfPlayerState(db: Db, token: string, now = new Date()): 
   if (!row) return null;
   const { attempt, session } = row;
   const quiz = session.quiz as SelfQuiz;
+  const view = new LayoutView(readLayout(attempt.layout, quiz.questions.length), quiz);
   const entries = attempt.answers as SelfEntries;
+  // Keyed by the position this participant sees.
   const answers: Record<number, PlayerAnswer> = {};
   quiz.questions.forEach((q, i) => {
     const input = entries[String(i)]?.a;
     const judged = input ? judgeAnswer(q, input) : null;
-    if (judged) answers[i] = playerAnswer(judged);
+    if (judged) answers[view.position(i)] = view.toShownAnswer(i, playerAnswer(judged));
   });
   const state = stateOf(session, now);
   const submitted = attempt.submittedAt !== null;
@@ -363,21 +389,25 @@ export async function selfPlayerState(db: Db, token: string, now = new Date()): 
       top: quiz.rules.showLeaderboard
         ? everyone.slice(0, TOP_SHOWN).map((p, i) => ({ nickname: p.nickname, avatar: p.avatar, score: p.score, rank: i + 1 }))
         : [],
-      review: quiz.questions.map((q, index) => ({
-        index,
-        answer: answers[index] ?? null,
-        isCorrect: byQ.get(index)?.isCorrect ?? false,
-        points: byQ.get(index)?.points ?? 0,
-        correct: show ? q.correct : [],
-        key: answerKey(q, show),
-        ...(show && q.explanation ? { explanation: q.explanation } : {}),
-      })),
+      review: quiz.questions.map((_, position) => {
+        const qi = view.quizIndex(position)!;
+        const q = quiz.questions[qi]!;
+        return {
+          index: position,
+          answer: answers[position] ?? null,
+          isCorrect: byQ.get(qi)?.isCorrect ?? false,
+          points: byQ.get(qi)?.points ?? 0,
+          correct: show ? view.shownCorrect(qi) : [],
+          key: answerKey(q, show),
+          ...(show && q.explanation ? { explanation: q.explanation } : {}),
+        };
+      }),
     };
   }
   return {
     title: session.title,
     rules: publicRules(quiz),
-    track: TRACK_IDS.find((id) => id === (session.quiz as { soundtrack?: unknown }).soundtrack) ?? null,
+    track: extrasOf(session.quiz).soundtrack ?? null,
     state,
     closesAt: session.closesAt?.getTime() ?? null,
     serverNow: now.getTime(),
@@ -385,7 +415,7 @@ export async function selfPlayerState(db: Db, token: string, now = new Date()): 
     startedAt: attempt.startedAt.getTime(),
     deadlineAt: deadlineOf(attempt.startedAt, session).getTime(),
     submitted,
-    questions: quiz.questions.map((_, i) => publicQuestion(quiz, i)),
+    questions: quiz.questions.map((_, position) => view.question(position)),
     answers,
     result: submitted
       ? { score: attempt.score, correctCount: attempt.correctCount, answered: Object.keys(answers).length, scoredTotal }
@@ -396,14 +426,19 @@ export async function selfPlayerState(db: Db, token: string, now = new Date()): 
 
 export type SelfActionResult = { ok: true } | { ok: false; reason: 'not_found' | 'locked' | 'invalid' };
 
-/** Notes when a question was first opened (speed scoring counts from then). */
+function viewOf(row: Loaded) {
+  const quiz = row.session.quiz as SelfQuiz;
+  return { quiz, view: new LayoutView(readLayout(row.attempt.layout, quiz.questions.length), quiz) };
+}
+
+/** Notes when a question was first opened (speed scoring counts from then). `index` is the position the participant sees. */
 export async function openSelfQuestion(db: Db, token: string, index: number, now = new Date()): Promise<SelfActionResult> {
   const row = await loadAttempt(db, token, now);
   if (!row) return { ok: false, reason: 'not_found' };
   if (!canAnswer(row, now)) return { ok: false, reason: 'locked' };
-  const quiz = row.session.quiz as SelfQuiz;
+  const { quiz, view } = viewOf(row);
   if (!Number.isInteger(index) || index < 0 || index >= quiz.questions.length) return { ok: false, reason: 'invalid' };
-  const key = String(index);
+  const key = String(view.quizIndex(index));
   await db
     .update(selfAttempts)
     .set({
@@ -424,10 +459,12 @@ export async function saveSelfAnswer(
   const row = await loadAttempt(db, token, now);
   if (!row) return { ok: false, reason: 'not_found' };
   if (!canAnswer(row, now)) return { ok: false, reason: 'locked' };
-  const quiz = row.session.quiz as SelfQuiz;
-  const q = Number.isInteger(index) ? quiz.questions[index] : undefined;
+  const { quiz, view } = viewOf(row);
+  if (!Number.isInteger(index) || index < 0 || index >= quiz.questions.length) return { ok: false, reason: 'invalid' };
+  const qi = view.quizIndex(index)!;
+  const q = quiz.questions[qi];
   if (!q) return { ok: false, reason: 'invalid' };
-  const key = String(index);
+  const key = String(qi);
   if (input === null) {
     await db
       .update(selfAttempts)
@@ -438,16 +475,17 @@ export async function saveSelfAnswer(
     return { ok: true, answer: null };
   }
   const parsed = SelfAnswerInput.safeParse(input);
-  const judged = parsed.success ? judgeAnswer(q, parsed.data) : null;
-  if (!parsed.success || !judged) return { ok: false, reason: 'invalid' };
-  const saved = JSON.stringify({ a: parsed.data, t: now.getTime() });
+  const stored = parsed.success ? view.toQuizInput(qi, parsed.data) : null;
+  const judged = stored ? judgeAnswer(q, stored) : null;
+  if (!stored || !judged) return { ok: false, reason: 'invalid' };
+  const saved = JSON.stringify({ a: stored, t: now.getTime() });
   await db
     .update(selfAttempts)
     .set({
       answers: sql`${selfAttempts.answers} || jsonb_build_object(${key}::text, jsonb_build_object('o', ${now.getTime()}::bigint) || coalesce(${selfAttempts.answers} -> ${key}::text, '{}'::jsonb) || ${saved}::jsonb)`,
     })
     .where(and(eq(selfAttempts.id, row.attempt.id), isNull(selfAttempts.submittedAt)));
-  return { ok: true, answer: playerAnswer(judged) };
+  return { ok: true, answer: view.toShownAnswer(qi, playerAnswer(judged)) };
 }
 
 /** Hands in the whole attempt. Afterwards answers can't change. */
@@ -457,6 +495,18 @@ export async function submitSelf(db: Db, token: string, now = new Date()): Promi
   if (row.attempt.submittedAt) return { ok: true };
   if (!canAnswer(row, now)) return { ok: false, reason: 'locked' };
   await submitAttempt(db, row, now);
+  return { ok: true };
+}
+
+/** Counts the participant leaving the quiz page while answering. */
+export async function recordSelfAway(db: Db, token: string, now = new Date()): Promise<SelfActionResult> {
+  const row = await loadAttempt(db, token, now);
+  if (!row) return { ok: false, reason: 'not_found' };
+  if (!canAnswer(row, now)) return { ok: false, reason: 'locked' };
+  await db
+    .update(selfAttempts)
+    .set({ tabSwitches: sql`least(${selfAttempts.tabSwitches} + 1, 9999)` })
+    .where(and(eq(selfAttempts.id, row.attempt.id), isNull(selfAttempts.submittedAt)));
   return { ok: true };
 }
 
@@ -470,15 +520,21 @@ export interface SelfHostView {
   timeLimitMs: number;
   questionCount: number;
   serverNow: number;
+  shuffleEach: boolean;
+  showLeaderboard: boolean;
+  showCorrect: boolean;
   participants: {
     nickname: string;
     avatar: string;
     startedAt: number;
     deadlineAt: number;
     submitted: boolean;
+    /** From start to submit (or to now while answering). */
+    timeTakenMs: number;
     answered: number;
     score: number | null;
     correctCount: number | null;
+    tabSwitches: number;
   }[];
 }
 
@@ -502,15 +558,19 @@ export async function selfHostView(db: Db, hostId: string, id: string, now = new
     const entries = a.answers as SelfEntries;
     const answered = Object.values(entries).filter((e) => e.a !== undefined).length;
     const submitted = a.submittedAt !== null;
+    const deadline = deadlineOf(a.startedAt, s).getTime();
+    const end = a.submittedAt?.getTime() ?? Math.min(now.getTime(), deadline);
     return {
       nickname: a.nickname,
       avatar: a.avatar,
       startedAt: a.startedAt.getTime(),
-      deadlineAt: deadlineOf(a.startedAt, s).getTime(),
+      deadlineAt: deadline,
       submitted,
+      timeTakenMs: Math.max(0, end - a.startedAt.getTime()),
       answered,
       score: submitted ? a.score : null,
       correctCount: submitted ? a.correctCount : null,
+      tabSwitches: a.tabSwitches,
     };
   });
   participants.sort((x, y) => (y.score ?? -1) - (x.score ?? -1) || x.startedAt - y.startedAt);
@@ -524,6 +584,9 @@ export async function selfHostView(db: Db, hostId: string, id: string, now = new
     timeLimitMs: s.timeLimitMs ?? 0,
     questionCount: quiz.questions.length,
     serverNow: now.getTime(),
+    shuffleEach: extrasOf(s.quiz).shuffleEach ?? false,
+    showLeaderboard: quiz.rules.showLeaderboard,
+    showCorrect: quiz.rules.showCorrect,
     participants,
   };
 }
@@ -541,17 +604,190 @@ async function ownsLiveSelf(db: Db, hostId: string, id: string) {
 /** Ends a self-paced session now, whatever its closing time. */
 export async function closeSelfSession(db: Db, hostId: string, id: string, now = new Date()) {
   if (!(await ownsLiveSelf(db, hostId, id))) return false;
-  return finalizeSelfSession(db, id, now, true);
+  const closed = await finalizeSelfSession(db, id, now, true);
+  if (closed) await db.insert(auditLog).values({ userId: hostId, action: 'session.close', meta: { sessionId: id } });
+  return closed;
 }
 
-/** Moves the closing time (later or earlier, but not into the past). */
-export async function setSelfClosesAt(db: Db, hostId: string, id: string, closesAt: Date, now = new Date()) {
-  if (!(closesAt.getTime() > now.getTime()) || closesAt.getTime() > now.getTime() + SELF_WINDOW_MAX_MS) return false;
-  if (!(await ownsLiveSelf(db, hostId, id))) return false;
+export interface SelfSettingsPatch {
+  title?: string;
+  opensAt?: Date;
+  closesAt?: Date;
+  timeLimitMs?: number;
+  showLeaderboard?: boolean;
+  showCorrect?: boolean;
+}
+
+export type SelfSettingsResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Changes an open (or scheduled) session's settings. Once closed, only the title and what participants
+ * may see (leaderboard, correct answers) can change. A new time limit applies to everyone still answering.
+ */
+export async function updateSelfSettings(
+  db: Db,
+  hostId: string,
+  id: string,
+  patch: SelfSettingsPatch,
+  now = new Date(),
+): Promise<SelfSettingsResult> {
+  if (!SessionId.safeParse(id).success) return { ok: false, error: 'This quiz no longer exists.' };
+  await finalizeDueSelfSessions(db, hostId, now);
+  const [s] = await db
+    .select(sessionColumns)
+    .from(gameSessions)
+    .where(and(eq(gameSessions.id, id), eq(gameSessions.hostId, hostId), eq(gameSessions.mode, 'self')))
+    .limit(1);
+  if (!s || !s.quiz) return { ok: false, error: 'This quiz no longer exists.' };
+  const state = stateOf(s, now);
+  const set: Partial<typeof gameSessions.$inferInsert> = {};
+
+  if (patch.title !== undefined) {
+    const title = patch.title.trim().replace(/\s+/g, ' ');
+    if (!title || title.length > 150) return { ok: false, error: 'The title must be 1–150 characters.' };
+    set.title = title;
+  }
+  const timing = patch.opensAt !== undefined || patch.closesAt !== undefined || patch.timeLimitMs !== undefined;
+  if (timing && state === 'closed') return { ok: false, error: 'This quiz has closed. Reopen it as a new session to run it again.' };
+  let opensAt = s.opensAt ?? now;
+  if (patch.opensAt !== undefined) {
+    if (state !== 'upcoming') return { ok: false, error: 'The quiz has already opened, so its opening time can’t change.' };
+    if (!(patch.opensAt.getTime() >= now.getTime() - 60_000)) return { ok: false, error: 'Choose an opening time from now on.' };
+    opensAt = new Date(Math.max(patch.opensAt.getTime(), now.getTime()));
+    set.opensAt = opensAt;
+  }
+  if (patch.closesAt !== undefined || patch.opensAt !== undefined) {
+    const closesAt = patch.closesAt ?? s.closesAt!;
+    if (closesAt.getTime() <= Math.max(now.getTime(), opensAt.getTime())) {
+      return { ok: false, error: 'The closing time must be in the future and after the opening time.' };
+    }
+    if (closesAt.getTime() - opensAt.getTime() > SELF_WINDOW_MAX_MS) return { ok: false, error: 'A self-paced quiz can stay open for 90 days at most.' };
+    set.closesAt = closesAt;
+  }
+  if (patch.timeLimitMs !== undefined) {
+    if (!Number.isFinite(patch.timeLimitMs) || patch.timeLimitMs < SELF_LIMIT_MIN_MS || patch.timeLimitMs > SELF_LIMIT_MAX_MS) {
+      return { ok: false, error: 'The time limit must be between 1 minute and 24 hours.' };
+    }
+    set.timeLimitMs = Math.round(patch.timeLimitMs);
+  }
+  if (patch.showLeaderboard !== undefined || patch.showCorrect !== undefined) {
+    const quiz = s.quiz as SelfQuiz & SessionExtras;
+    set.quiz = {
+      ...quiz,
+      rules: {
+        ...quiz.rules,
+        ...(patch.showLeaderboard !== undefined ? { showLeaderboard: patch.showLeaderboard } : {}),
+        ...(patch.showCorrect !== undefined ? { showCorrect: patch.showCorrect } : {}),
+      },
+    };
+  }
+  if (Object.keys(set).length === 0) return { ok: true };
   const rows = await db
     .update(gameSessions)
-    .set({ closesAt })
-    .where(and(eq(gameSessions.id, id), eq(gameSessions.status, 'live'), sql`${gameSessions.opensAt} < ${closesAt}`))
+    .set(set)
+    // Timing changes only while still open, in case it closed in the meantime.
+    .where(and(eq(gameSessions.id, id), timing ? eq(gameSessions.status, 'live') : undefined))
     .returning({ id: gameSessions.id });
-  return rows.length > 0;
+  if (!rows.length) return { ok: false, error: 'This quiz has just closed.' };
+  await db.insert(auditLog).values({ userId: hostId, action: 'session.settings', meta: { sessionId: id, changed: Object.keys(set) } });
+  return { ok: true };
+}
+
+/** Opens the same quiz again as a new session (new PIN, no participants), keeping its settings. */
+export async function reopenSelfSession(
+  db: Db,
+  host: { id: string; orgId: string | null },
+  id: string,
+  times: { opensAt: Date; closesAt: Date; timeLimitMs?: number },
+  now = new Date(),
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  if (!SessionId.safeParse(id).success) return { ok: false, error: 'This quiz no longer exists.' };
+  const [s] = await db
+    .select({ ...sessionColumns, quizId: gameSessions.quizId })
+    .from(gameSessions)
+    .where(and(eq(gameSessions.id, id), eq(gameSessions.hostId, host.id), eq(gameSessions.mode, 'self')))
+    .limit(1);
+  if (!s || !s.quiz) return { ok: false, error: 'This quiz no longer exists.' };
+  const opensAt = new Date(Math.max(times.opensAt.getTime(), now.getTime()));
+  const limit = times.timeLimitMs ?? s.timeLimitMs ?? SELF_LIMIT_MIN_MS;
+  if (times.closesAt.getTime() <= opensAt.getTime()) return { ok: false, error: 'The quiz must close after it opens.' };
+  if (times.closesAt.getTime() - opensAt.getTime() > SELF_WINDOW_MAX_MS) return { ok: false, error: 'A self-paced quiz can stay open for 90 days at most.' };
+  if (limit < SELF_LIMIT_MIN_MS || limit > SELF_LIMIT_MAX_MS) return { ok: false, error: 'The time limit must be between 1 minute and 24 hours.' };
+  const { soundtrack, shuffleEach, ...quiz } = s.quiz as SelfQuiz & SessionExtras;
+  const created = await createSelfSession(db, host, {
+    quizId: s.quizId,
+    title: s.title,
+    quiz,
+    opensAt,
+    closesAt: times.closesAt,
+    timeLimitMs: Math.round(limit),
+    soundtrack,
+    shuffleEach,
+  });
+  return { ok: true, id: created.id };
+}
+
+export interface SelfExport {
+  title: string;
+  questions: { text: string; type: string }[];
+  rows: {
+    rank: number;
+    nickname: string;
+    startedAt: number;
+    submittedAt: number | null;
+    timeTakenMs: number;
+    score: number;
+    correctCount: number;
+    answered: number;
+    tabSwitches: number;
+    answers: ({ answer: string; isCorrect: boolean; points: number; timeMs: number } | null)[];
+  }[];
+}
+
+/** Every participant's answers, for the spreadsheet download. Scores of unsubmitted attempts are worked out as they stand. */
+export async function selfExport(db: Db, hostId: string, id: string, now = new Date()): Promise<SelfExport | null> {
+  if (!SessionId.safeParse(id).success) return null;
+  await finalizeDueSelfSessions(db, hostId, now);
+  const [s] = await db
+    .select(sessionColumns)
+    .from(gameSessions)
+    .where(and(eq(gameSessions.id, id), eq(gameSessions.hostId, hostId), eq(gameSessions.mode, 'self')))
+    .limit(1);
+  if (!s || !s.quiz) return null;
+  const quiz = s.quiz as SelfQuiz;
+  const attempts = await db.select().from(selfAttempts).where(eq(selfAttempts.sessionId, id));
+  const describe = (q: SelfQuiz['questions'][number], a: SelfAnswerInput) => {
+    const judged = judgeAnswer(q, a);
+    if (!judged) return '';
+    if (judged.text !== undefined) return judged.text;
+    if (judged.number !== undefined) return String(judged.number);
+    if (judged.blanks !== undefined) return judged.blanks.join(' | ');
+    return judged.choices.map((c) => q.options[c] ?? '').join(q.type === 'order' ? ' → ' : ', ');
+  };
+  const rows = attempts.map((a) => {
+    const entries = a.answers as SelfEntries;
+    const scored = scoreAttempt(quiz, entries);
+    const byQ = new Map(scored.answers.map((x) => [x.q, x]));
+    const deadline = deadlineOf(a.startedAt, s).getTime();
+    const end = a.submittedAt?.getTime() ?? Math.min(now.getTime(), deadline);
+    return {
+      rank: 0,
+      nickname: a.nickname,
+      startedAt: a.startedAt.getTime(),
+      submittedAt: a.submittedAt?.getTime() ?? null,
+      timeTakenMs: Math.max(0, end - a.startedAt.getTime()),
+      score: a.submittedAt ? a.score : scored.score,
+      correctCount: a.submittedAt ? a.correctCount : scored.correctCount,
+      answered: scored.answered,
+      tabSwitches: a.tabSwitches,
+      answers: quiz.questions.map((q, i) => {
+        const given = entries[String(i)]?.a;
+        const marked = byQ.get(i);
+        return given && marked ? { answer: describe(q, given), isCorrect: marked.isCorrect, points: marked.points, timeMs: marked.timeMs } : null;
+      }),
+    };
+  });
+  rows.sort((x, y) => y.score - x.score || (x.submittedAt ?? Infinity) - (y.submittedAt ?? Infinity));
+  rows.forEach((r, i) => (r.rank = i + 1));
+  return { title: s.title, questions: quiz.questions.map((q) => ({ text: q.text, type: q.type })), rows };
 }

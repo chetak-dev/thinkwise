@@ -27,6 +27,9 @@ export interface StartChoice {
   opensAt?: number;
   closesAt?: number;
   timeLimitMs?: number;
+  shuffleEach?: boolean;
+  showLeaderboard?: boolean;
+  showCorrect?: boolean;
 }
 
 /** The value a datetime-local input wants, in the browser's own time zone. */
@@ -55,6 +58,9 @@ export function StartSessionDialog({
   const [opensAt, setOpensAt] = useState('');
   const [closesAt, setClosesAt] = useState('');
   const [limitMin, setLimitMin] = useState('');
+  const [shuffleEach, setShuffleEach] = useState(true);
+  const [showLeaderboard, setShowLeaderboard] = useState(true);
+  const [showCorrect, setShowCorrect] = useState(true);
   const [problem, setProblem] = useState<string | null>(null);
 
   const chooseMode = (next: GameMode) => {
@@ -82,7 +88,16 @@ export function StartSessionDialog({
       return setProblem('The time limit must be between 1 and 1440 minutes.');
     }
     setProblem(null);
-    onStart({ autoAdvance: false, mode, opensAt: opens, closesAt: closes, ...(minutes !== null ? { timeLimitMs: Math.round(minutes * 60_000) } : {}) });
+    onStart({
+      autoAdvance: false,
+      mode,
+      opensAt: opens,
+      closesAt: closes,
+      ...(minutes !== null ? { timeLimitMs: Math.round(minutes * 60_000) } : {}),
+      shuffleEach,
+      showLeaderboard,
+      showCorrect,
+    });
   };
 
   return (
@@ -153,9 +168,27 @@ export function StartSessionDialog({
                 className={`${FIELD} mt-1`}
               />
             </label>
+            <Switch
+              checked={shuffleEach}
+              onChange={setShuffleEach}
+              label="Different order for each participant"
+              description="Shuffles questions and answer options per person, so neighbours can’t copy"
+            />
+            <Switch
+              checked={showLeaderboard}
+              onChange={setShowLeaderboard}
+              label="Show the leaderboard after closing"
+              description="Participants see the top places once the quiz closes"
+            />
+            <Switch
+              checked={showCorrect}
+              onChange={setShowCorrect}
+              label="Show correct answers after closing"
+              description="Participants can review every question with the right answer"
+            />
             <p className="text-xs text-muted">
               Each participant’s clock starts when they press Start. They can move between questions and change answers until they
-              submit or their time runs out. Scores show straight away; correct answers and places once the quiz closes.
+              submit or their time runs out. You can change these settings later from the quiz page.
             </p>
           </div>
         )}

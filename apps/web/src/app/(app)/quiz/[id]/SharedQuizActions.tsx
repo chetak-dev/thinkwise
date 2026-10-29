@@ -6,12 +6,14 @@ import { Copy, Loader2, Pencil, Play } from 'lucide-react';
 import { copyQuizAction } from '@/app/(app)/quiz-actions';
 import { useHostQuiz } from '@/lib/hostQuiz';
 import { StartSessionDialog } from '@/components/StartSessionDialog';
+import { useAccess } from '@/components/AccessProvider';
 
 export function SharedQuizActions({ id, owned }: { id: string; owned: boolean }) {
   const [startOpen, setStartOpen] = useState(false);
   const [copying, startCopy] = useTransition();
   const [copyError, setCopyError] = useState<string | null>(null);
   const { host, pending: hosting, failure } = useHostQuiz('published');
+  const { canHost: canHostQuiz } = useAccess();
 
   useEffect(() => {
     if (failure) setStartOpen(false);
@@ -20,6 +22,7 @@ export function SharedQuizActions({ id, owned }: { id: string; owned: boolean })
   return (
     <>
       <div className="mt-6 flex flex-wrap gap-2">
+        {canHostQuiz && (
         <button
           type="button"
           disabled={hosting}
@@ -29,6 +32,7 @@ export function SharedQuizActions({ id, owned }: { id: string; owned: boolean })
           {hosting ? <Loader2 className="size-5 animate-spin" aria-hidden="true" /> : <Play className="size-5" aria-hidden="true" />}
           Host live
         </button>
+        )}
         {owned && (
           <Link
             href={`/quiz/${id}/edit`}
