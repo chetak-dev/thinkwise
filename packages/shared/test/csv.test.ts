@@ -271,3 +271,18 @@ test('playable quizzes enforce the shape of each question type', () => {
     assert.deepEqual([q.options, q.points, q.penalty, q.maxWords], [[], 0, 0, 1], 'word clouds never score');
   }
 });
+
+test('multilingual rows say exactly which cell is wrong', () => {
+  const head = 'question_id,language,question,option_a,option_b,option_c,option_d,correct,time,points,explanation';
+  const bad = csvToQuestions(`${head}\n1,English,Q?,Yes,No,,,A,20,10,\n2,English,Q2?,Yes,,No,,E,7,1000,`, id);
+  assert.equal(bad.questions.length, 0);
+  assert.match(bad.errors[0]!.message, /.points. is 10; use one of 0, 100, 250, 500, 1000, 2000/);
+  assert.equal(bad.errors[0]!.row, 2);
+  const second = bad.errors[1]!.message;
+  assert.match(second, /option_b. is empty/);
+  assert.match(second, /.correct. must be one letter/);
+  assert.match(second, /.time. is 7/);
+  const good = csvToQuestions(`${head}\n1,English,Q?,Yes,No,,,A,20,100,\n1,Odia,Q?,Haan,Na,,,A,20,100,`, id);
+  assert.deepEqual(good.errors, []);
+  assert.equal(good.questions[0]!.points, 100);
+});

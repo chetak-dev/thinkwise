@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { Download, FileUp, Loader2 } from 'lucide-react';
-import { CSV_COLUMNS, CSV_MAX_BYTES, CSV_TEMPLATE } from '@thinkwise/shared';
+import { CSV_COLUMNS, CSV_MAX_BYTES, CSV_TEMPLATE, POINT_VALUES, TIME_LIMITS_S } from '@thinkwise/shared';
 import { Modal } from '@/components/Modal';
 import { downloadQuestionTemplate, readQuestionWorkbook } from '@/lib/questionWorkbook';
 
@@ -120,6 +120,7 @@ export function ImportCsvDialog({
           Multilingual: use the Excel template. Repeat the same question_id for each language, with one translation per row.
           Every question needs every offered language. Keep options in the same order and the correct letter, time and points identical.
           This format imports multiple-choice questions. The first language is the host/editor view.
+          “time” is one of {TIME_LIMITS_S.join(', ')} seconds and “points” one of {POINT_VALUES.join(', ')} (blank means 20 s and 1000).
           Participants choose their question language once, before starting. Maximum 100 questions, 20 languages, 256 KB.
         </p>
         <details className="rounded-2xl bg-surface-2 p-3 text-sm">
