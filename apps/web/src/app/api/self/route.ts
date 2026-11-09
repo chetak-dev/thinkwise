@@ -9,6 +9,7 @@ import {
   selfTokenOwner,
   submitSelf,
 } from '@thinkwise/db';
+import { AVATARS } from '@thinkwise/shared';
 import { getCurrentUser, getParticipant } from '@/lib/session';
 
 const MAX_BODY = 16 * 1024;
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
   return info ? json({ info, signedIn: !!user }) : json({ error: 'not_found' }, 404);
 }
 
-type Body = { action?: unknown; pin?: unknown; nickname?: unknown; avatar?: unknown; language?: unknown; token?: unknown; index?: unknown; answer?: unknown };
+type Body = { action?: unknown; pin?: unknown; language?: unknown; token?: unknown; index?: unknown; answer?: unknown };
 
 /**
  * A signed-in participant's actions in a self-paced session. The token in the body identifies their
@@ -68,11 +69,11 @@ export async function POST(request: Request) {
 
   switch (body.action) {
     case 'join': {
-      if (typeof body.pin !== 'string' || typeof body.nickname !== 'string' || typeof body.avatar !== 'string') {
-        return json({ error: 'bad_request' }, 400);
-      }
+      if (typeof body.pin !== 'string') return json({ error: 'bad_request' }, 400);
       const language = typeof body.language === 'string' ? body.language : '';
-      const result = await joinSelf(db, { userId: who.user.id, language }, body.pin, body.nickname, body.avatar);
+      // Self-paced players appear under their profile name, with an avatar picked from their account id.
+      const avatar = AVATARS[[...who.user.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % AVATARS.length]!;
+      const result = await joinSelf(db, { userId: who.user.id, language }, body.pin, who.user.name, avatar);
       return result.ok ? json({ token: result.token }) : json({ error: result.reason }, result.reason === 'not_found' ? 404 : 409);
     }
     case 'state': {

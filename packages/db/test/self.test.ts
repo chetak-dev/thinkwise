@@ -86,7 +86,9 @@ test('participants join with the 7-digit PIN, save, change and submit; results w
   const joined = await self.joinSelf(db, arjun, pin, 'Arjun', '🦊', at(MIN));
   assert.ok(joined.ok);
   const token = joined.token;
-  assert.deepEqual(await self.joinSelf(db, await player(), pin, ' arjun ', '🦊', at(MIN)), { ok: false, reason: 'name_taken' });
+  const twin = await self.joinSelf(db, await player(), pin, ' arjun ', '🦊', at(MIN));
+  assert.ok(twin.ok, 'a shared name is numbered, not refused');
+  assert.equal((await self.selfPlayerState(db, twin.token, at(MIN)))?.me.nickname, 'arjun 2');
   assert.deepEqual(await self.joinSelf(db, await player(), pin, 'Bad avatar', 'x', at(MIN)), { ok: false, reason: 'invalid' });
 
   assert.ok((await self.openSelfQuestion(db, token, 0, at(MIN))).ok);
@@ -110,8 +112,8 @@ test('participants join with the 7-digit PIN, save, change and submit; results w
   assert.equal(state?.final, null, 'answers and ranks wait until the session closes');
 
   const view = await self.selfHostView(db, host.id, id, at(3 * MIN));
-  assert.equal(view?.participants.length, 1);
-  assert.equal(view?.participants[0]?.score, 1000);
+  assert.equal(view?.participants.length, 2);
+  assert.equal(view?.participants.find((p) => p.nickname === 'Arjun')?.score, 1000);
   assert.equal(await self.selfHostView(db, other.id, id, at(3 * MIN)), null, 'only the host sees it');
   assert.equal((await s.listRunningSessions(db, host.id))[0]?.id, id, 'open sessions show as running');
 });

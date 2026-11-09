@@ -290,7 +290,7 @@ export async function joinSelf(
   if (!s) return { ok: false, reason: 'not_found' };
   const resumed = await resumeSelf(db, account.userId, s.id);
   if (resumed) return { ok: true, token: resumed };
-  const name = nickname.trim().replace(/\s+/g, ' ');
+  const name = nickname.trim().replace(/\s+/g, ' ').slice(0, NICKNAME_MAX).trimEnd();
   if (!name || name.length > NICKNAME_MAX || !(AVATARS as readonly string[]).includes(avatar)) return { ok: false, reason: 'invalid' };
   const quiz = s.quiz as SelfQuiz;
   const languages = quizLanguages(quiz);
@@ -299,24 +299,29 @@ export async function joinSelf(
   if (state !== 'open') return { ok: false, reason: state };
   const token = randomBytes(24).toString('base64url');
   const layout = extrasOf(s.quiz).shuffleEach ? makeLayout(quiz) : null;
-  const [row] = await db
-    .insert(selfAttempts)
-    .values({
-      sessionId: s.id,
-      tokenHash: hashToken(token),
-      userId: account.userId,
-      language: account.language,
-      nickname: name,
-      avatar,
-      startedAt: now,
-      layout,
-    })
-    .onConflictDoNothing()
-    .returning({ id: selfAttempts.id });
-  if (row) return { ok: true, token };
-  // Lost a race with this account's own join on another device, or the nickname is taken.
-  const raced = await resumeSelf(db, account.userId, s.id);
-  return raced ? { ok: true, token: raced } : { ok: false, reason: 'name_taken' };
+  // Names come from profiles, so two people can share one: the second becomes "Name 2", and so on.
+  for (let n = 1; n <= 50; n++) {
+    const suffix = n === 1 ? '' : ` ${n}`;
+    const [row] = await db
+      .insert(selfAttempts)
+      .values({
+        sessionId: s.id,
+        tokenHash: hashToken(token),
+        userId: account.userId,
+        language: account.language,
+        nickname: name.slice(0, NICKNAME_MAX - suffix.length).trimEnd() + suffix,
+        avatar,
+        startedAt: now,
+        layout,
+      })
+      .onConflictDoNothing()
+      .returning({ id: selfAttempts.id });
+    if (row) return { ok: true, token };
+    // Lost a race with this account's own join on another device.
+    const raced = await resumeSelf(db, account.userId, s.id);
+    if (raced) return { ok: true, token: raced };
+  }
+  return { ok: false, reason: 'name_taken' };
 }
 
 /** Issues a new device token for the account's attempt, keeping its language, answers and deadline. */

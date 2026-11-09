@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } fr
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { ArrowLeft, ArrowRight, CalendarClock, Clock, Feather, Lightbulb, ListChecks, Loader2, Pencil, Timer, Volume2, VolumeX } from 'lucide-react';
-import { AVATARS, NICKNAME_MAX, isScored, type Avatar, type PlayerAnswer, type PublicQuestion } from '@thinkwise/shared';
+import { isScored, type PlayerAnswer, type PublicQuestion } from '@thinkwise/shared';
 import type { SelfInfo, SelfPlayerState } from '@thinkwise/db';
 import { Logo } from '@/components/Logo';
 import { PageLoader } from '@/components/PageLoader';
@@ -75,8 +75,6 @@ function SelfFlow() {
   const [pin, setPin] = useState(linkPin.length === 7 ? linkPin : '');
   const [info, setInfo] = useState<SelfInfo | null>(null);
   const [state, setState] = useState<SelfPlayerState | null>(null);
-  const [nickname, setNickname] = useState('');
-  const [avatar, setAvatar] = useState<Avatar>(AVATARS[0]);
   const [language, setLanguage] = useState('');
   const [signedIn, setSignedIn] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,10 +89,6 @@ function SelfFlow() {
   const submitting = useRef(false);
 
   const token = () => (pin ? localStorage.getItem(tokenKey(pin)) : null);
-
-  useEffect(() => {
-    setAvatar(AVATARS[Math.floor(Math.random() * AVATARS.length)]!);
-  }, []);
 
   const applyState = useCallback((s: SelfPlayerState) => {
     offset.current = s.serverNow - Date.now();
@@ -131,12 +125,11 @@ function SelfFlow() {
         }
         offset.current = body.info.serverNow - Date.now();
         setSignedIn(body.signedIn !== false);
-        if (body.info.mine) setNickname(body.info.mine.nickname);
         setInfo(body.info);
         setLanguage(body.info.mine?.language ?? (body.info.languages.length === 1 ? body.info.languages[0]! : ''));
         // An attempt already started (maybe on another device) carries on where it was left.
         if (body.info.mine && body.info.state !== 'upcoming') {
-          const { data } = await post<{ token?: string }>({ action: 'join', pin, nickname: body.info.mine.nickname, avatar: AVATARS[0] });
+          const { data } = await post<{ token?: string }>({ action: 'join', pin });
           if (cancelled) return;
           if (data?.token) {
             localStorage.setItem(tokenKey(pin), data.token);
@@ -237,14 +230,12 @@ function SelfFlow() {
   const join = async (e: FormEvent) => {
     e.preventDefault();
     if (!signedIn) return toSignIn('sign_in', pin);
-    if (!nickname.trim() || busy || (info?.languages.length && !language)) return;
+    if (busy || (info?.languages.length && !language)) return;
     setBusy(true);
     setError(null);
     const { data } = await post<{ token?: string; error?: string }>({
       action: 'join',
       pin,
-      nickname: nickname.trim(),
-      avatar,
       ...(language ? { language } : {}),
     });
     if (data?.token) {
@@ -254,15 +245,13 @@ function SelfFlow() {
     } else {
       const reason = data?.error;
       setError(
-        reason === 'name_taken'
-          ? t.selfNameTaken
-          : reason === 'closed'
-            ? t.selfClosed
-            : reason === 'upcoming'
-              ? t.selfUpcoming
-              : reason === 'not_found'
-                ? t.selfNotFound
-                : t.selfJoinFailed,
+        reason === 'closed'
+          ? t.selfClosed
+          : reason === 'upcoming'
+            ? t.selfUpcoming
+            : reason === 'not_found'
+              ? t.selfNotFound
+              : t.selfJoinFailed,
       );
     }
     setBusy(false);
@@ -451,40 +440,6 @@ function SelfFlow() {
                       <p className="mt-2 text-xs text-muted">{t.languageLocked}</p>
                     </fieldset>
                   )}
-                  <div>
-                    <label htmlFor="nickname" className="mb-1.5 block text-sm font-semibold">
-                      {t.nickname}
-                    </label>
-                    <input
-                      id="nickname"
-                      autoFocus
-                      autoComplete="off"
-                      maxLength={NICKNAME_MAX}
-                      value={nickname}
-                      onChange={(e) => setNickname(e.target.value)}
-                      placeholder={t.nicknamePlaceholder}
-                      className="h-14 w-full rounded-2xl border-2 border-app bg-surface-2 px-4 text-xl font-bold focus:border-nova-500 focus:outline-none"
-                    />
-                  </div>
-                  <fieldset>
-                    <legend className="mb-2 text-sm font-semibold">{t.avatar}</legend>
-                    <div className="grid grid-cols-8 gap-1.5">
-                      {AVATARS.map((a) => (
-                        <button
-                          key={a}
-                          type="button"
-                          aria-label={`Avatar ${a}`}
-                          aria-pressed={avatar === a}
-                          onClick={() => setAvatar(a)}
-                          className={`flex aspect-square items-center justify-center rounded-xl text-2xl transition ${
-                            avatar === a ? 'scale-110 bg-nova-100 ring-2 ring-nova-500 dark:bg-nova-900' : 'hover:bg-surface-2'
-                          }`}
-                        >
-                          {a}
-                        </button>
-                      ))}
-                    </div>
-                  </fieldset>
                   <p className="rounded-2xl bg-nova-500/10 px-4 py-3 text-sm">{t.selfTimerNote}</p>
                   {error && (
                     <p role="alert" className="text-center text-sm font-semibold text-rose-600 dark:text-rose-300">
@@ -493,7 +448,7 @@ function SelfFlow() {
                   )}
                   <button
                     type="submit"
-                    disabled={!nickname.trim() || busy || (info.languages.length > 0 && !language)}
+                    disabled={busy || (info.languages.length > 0 && !language)}
                     className={SUBMIT_CLASS}
                   >
                     {busy && <Loader2 className="mr-2 size-5 animate-spin" aria-hidden="true" />}
@@ -720,7 +675,7 @@ function SelfFlow() {
           </div>
         )}
 
-        {step === 'done' && state && <DoneStage state={state} t={t} timedOut={timedOut} onCheck={() => void refresh()} />}
+        {step === 'done' && state && <DoneStage state={state} t={t} timedOut={timedOut} lang={prefs.lang} onCheck={refresh} />}
       </main>
     </div>
   );
@@ -730,14 +685,35 @@ function DoneStage({
   state,
   t,
   timedOut,
+  lang,
   onCheck,
 }: {
   state: SelfPlayerState;
   t: Strings;
   timedOut: boolean;
-  onCheck: () => void;
+  lang: Lang;
+  onCheck: () => Promise<unknown>;
 }) {
   const final = state.final;
+  const [checking, setChecking] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const check = async () => {
+    setChecking(true);
+    try {
+      await onCheck();
+    } finally {
+      setChecking(false);
+      setChecked(true);
+    }
+  };
+
+  // Fetch the results by themselves as soon as the quiz closes, and every 20 s in case the host closes it early.
+  useEffect(() => {
+    if (final) return;
+    const untilClose = state.closesAt ? state.closesAt - state.serverNow + 2_000 : Infinity;
+    const id = window.setTimeout(() => void onCheck(), Math.max(5_000, Math.min(untilClose, 20_000)));
+    return () => window.clearTimeout(id);
+  }, [final, state, onCheck]);
   const ranked = state.rules.showLeaderboard && final;
   const medal = ranked && final.rank <= 3 ? ['🥇', '🥈', '🥉'][final.rank - 1] : '🎉';
   const result = state.result;
@@ -775,12 +751,25 @@ function DoneStage({
         </div>
       )}
       {!final && (
-        <>
-          <p className="max-w-sm text-sm text-muted">{t.answersLater}</p>
-          <button type="button" onClick={onCheck} className="font-semibold text-nova-600 underline dark:text-nova-300">
-            {t.checkAgain}
+        <div className="w-full space-y-3 rounded-2xl bg-nova-500/10 px-4 py-4 text-sm">
+          <p className="font-semibold">
+            {state.closesAt && state.state !== 'closed' ? t.resultsAfter(formatWhen(state.closesAt, lang)) : t.answersLater}
+          </p>
+          <button
+            type="button"
+            disabled={checking}
+            onClick={check}
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-app bg-surface px-4 font-semibold transition hover:border-nova-400 disabled:opacity-60"
+          >
+            {checking && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+            {t.checkResults}
           </button>
-        </>
+          {checked && !checking && (
+            <p role="status" className="text-xs text-muted">
+              {t.resultsNotYet}
+            </p>
+          )}
+        </div>
       )}
       {final && final.top.length > 0 && (
         <div className="w-full rounded-3xl bg-surface p-4 text-left shadow-soft">
@@ -838,9 +827,6 @@ function DoneStage({
       <Link href="/history" className="font-semibold text-nova-600 underline dark:text-nova-300">
         {t.myHistory}
       </Link>
-      <button type="button" onClick={() => window.location.assign('/play')} className="font-semibold text-nova-600 underline dark:text-nova-300">
-        {t.joinAnother}
-      </button>
     </div>
   );
 }

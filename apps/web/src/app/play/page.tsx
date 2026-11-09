@@ -342,13 +342,6 @@ function FinalStage({ final, me, t, rules }: { final: Final; me: Me; t: Strings;
       <Link href="/history" className="font-semibold text-nova-600 underline dark:text-nova-300">
         {t.myHistory}
       </Link>
-      <button
-        type="button"
-        onClick={() => window.location.assign('/play')}
-        className="font-semibold text-nova-600 underline dark:text-nova-300"
-      >
-        {t.joinAnother}
-      </button>
     </div>
   );
 }
