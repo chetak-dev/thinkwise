@@ -22,13 +22,12 @@ test('register creates a user with a bcrypt hash; email is normalised and unique
     name: 'Riya Sharma',
     email: '  Riya@Example.COM ',
     password: 'correct horse',
-    organisation: 'Sunrise School',
   });
   assert.equal(res.ok, true);
   if (!res.ok) return;
   assert.equal(res.user.email, 'riya@example.com');
-  assert.equal(res.user.role, 'org_admin', 'creating an organisation makes you its admin');
-  assert.ok(res.user.orgId);
+  assert.equal(res.user.role, 'host');
+  assert.equal(res.user.orgId, null);
   assert.ok(!('passwordHash' in res.user), 'public user never carries the hash');
 
   const [row] = await db.select().from(users).where(eq(users.id, res.user.id));
@@ -40,7 +39,6 @@ test('register creates a user with a bcrypt hash; email is normalised and unique
 
   const solo = await auth.registerUser(db, { name: 'Solo', email: 'solo@example.com', password: 'solo-password' });
   assert.equal(solo.ok && solo.user.role, 'host');
-  assert.equal(solo.ok && solo.user.orgId, null);
 });
 
 test('input validation rejects bad emails and weak or oversized passwords', () => {

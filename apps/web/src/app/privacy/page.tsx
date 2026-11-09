@@ -29,7 +29,7 @@ const SECTIONS: { title: string; body: React.ReactNode }[] = [
     body: (
       <>
         <p>
-          For an account we keep your name, email address and, if you choose one, your organisation. Passwords are stored only
+          For an account we keep your name, email address, phone number and address. Passwords are stored only
           as a one-way hash; if you sign in with Google we keep Google’s account id instead and never see your Google password.
         </p>
         <p>

@@ -34,7 +34,6 @@ import { useGameSocket, type Send } from '@/lib/useGameSocket';
 import { usePrefs } from '@/lib/prefs';
 import { setSoundEnabled, useAudioPlaying } from '@/lib/audio';
 import { HOST_SESSION_KEY, hostAction, rememberHostSession, rememberedQuiz } from '@/lib/hostQuiz';
-import { hostSampleAction } from '@/app/(app)/quiz-actions';
 
 interface HostSession {
   gameId: string;
@@ -66,13 +65,17 @@ export function HostClient() {
     setRelaunchError(null);
     const remembered = rememberedQuiz();
     sessionStorage.removeItem(HOST_SESSION_KEY);
-    const result = remembered ? await hostAction(remembered.source)(remembered.id) : await hostSampleAction();
+    if (!remembered) {
+      setRelaunchError('Choose a quiz to host first.');
+      return;
+    }
+    const result = await hostAction(remembered.source)(remembered.id);
     if (!result.ok) {
       setRelaunchError(result.error);
       return;
     }
     if ('selfId' in result) return;
-    rememberHostSession(result.gameId, result.hostToken, remembered?.id ?? null, remembered?.source);
+    rememberHostSession(result.gameId, result.hostToken, remembered.id, remembered.source);
     send({ t: 'host:resume', gameId: result.gameId, hostToken: result.hostToken });
   };
 

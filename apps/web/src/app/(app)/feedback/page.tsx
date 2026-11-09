@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { ArrowRight, ClipboardList, Plus, Rocket, Sparkles } from 'lucide-react';
 import { getDb, listFeedbackEvents, listFeedbackForms } from '@thinkwise/db';
 import { EVENT_FLOW_INFO } from '@thinkwise/shared';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDate } from '@/lib/time';
 import { createFeedbackFormAction } from './actions';
@@ -14,7 +14,7 @@ const BUTTON =
   'inline-flex h-10 select-none items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-semibold transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.97]';
 
 export default async function FeedbackPage() {
-  const user = await requireUser('/feedback');
+  const user = await requireHost('/feedback');
   const db = getDb();
   const [events, forms, timeZone] = await Promise.all([listFeedbackEvents(db, user.id), listFeedbackForms(db, user.id), getTimeZone()]);
 

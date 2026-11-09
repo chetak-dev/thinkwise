@@ -5,13 +5,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BarChart3,
-  Building2,
   History,
   House,
   Library,
   LogOut,
   Menu,
   MessageSquareHeart,
+  Play,
   Plus,
   ShieldCheck,
   SlidersHorizontal,
@@ -24,7 +24,6 @@ import { DisplaySettings } from '@/components/DisplaySettings';
 import { Modal } from '@/components/Modal';
 import { logoutAction } from '@/app/(auth)/actions';
 import { createQuizAction } from '@/app/(app)/quiz-actions';
-import { SampleHostLink } from '@/components/SampleHostLink';
 import { useAccess } from '@/components/AccessProvider';
 
 interface NavItem {
@@ -32,16 +31,19 @@ interface NavItem {
   label: string;
   Icon: LucideIcon;
   ready: boolean;
+  /** Who sees it: everyone, admins (who create and host quizzes) or site admins. */
+  role?: 'host' | 'siteAdmin';
 }
 
 const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Home', Icon: House, ready: true },
-  { href: '/library', label: 'Library', Icon: Library, ready: true },
-  { href: '/feedback', label: 'Feedback + Quiz', Icon: MessageSquareHeart, ready: true },
-  { href: '/reports', label: 'Reports', Icon: BarChart3, ready: true },
+  { href: '/play', label: 'Join a quiz', Icon: Play, ready: true },
+  { href: '/library', label: 'Library', Icon: Library, ready: true, role: 'host' },
+  { href: '/feedback', label: 'Feedback + Quiz', Icon: MessageSquareHeart, ready: true, role: 'host' },
+  { href: '/reports', label: 'Reports', Icon: BarChart3, ready: true, role: 'host' },
+  { href: '/admin', label: 'Admin', Icon: ShieldCheck, ready: true, role: 'siteAdmin' },
   { href: '/history', label: 'My quiz history', Icon: History, ready: true },
   { href: '/profile', label: 'My profile', Icon: UserRound, ready: true },
-  { href: '/org', label: 'Organisation', Icon: Building2, ready: false },
 ];
 
 export interface ShellUser {
@@ -63,8 +65,8 @@ function SidebarContent({
   onSignOut: () => void;
 }) {
   const pathname = usePathname();
-  const { siteAdmin } = useAccess();
-  const nav = siteAdmin ? [...NAV.slice(0, 4), { href: '/admin', label: 'Admin', Icon: ShieldCheck, ready: true }, ...NAV.slice(4)] : NAV;
+  const { canHost, siteAdmin } = useAccess();
+  const nav = NAV.filter((n) => !n.role || (n.role === 'host' ? canHost : siteAdmin));
   // In the collapsed rail only icons show; text fades in when the rail expands on hover or keyboard focus.
   const label = rail
     ? 'whitespace-nowrap opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100 group-has-[:focus-visible]/rail:opacity-100'
@@ -77,27 +79,22 @@ function SidebarContent({
         <span className={`mt-1 block text-[10px] font-bold uppercase tracking-[.24em] text-nova-200/70 ${label}`}>Live quiz studio</span>
       </Link>
 
-      <div className="space-y-2">
-        <form action={createQuizAction} onSubmit={onNavigate}>
-          <button
-            type="submit"
-            aria-label={rail ? 'New quiz' : undefined}
-            className={`flex h-11 w-full items-center gap-2 rounded-xl bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] font-semibold text-white shadow-lift transition hover:brightness-110 ${
-              rail ? 'justify-start px-3' : 'justify-center'
-            }`}
-          >
-            <Plus className="size-4 shrink-0" aria-hidden="true" />
-            <span className={label}>New quiz</span>
-          </button>
-        </form>
-        <SampleHostLink
-          onNavigate={onNavigate}
-          labelClassName={label}
-          className={`flex h-9 items-center gap-2 rounded-xl border border-white/15 text-sm font-semibold text-white/75 transition hover:bg-white/10 hover:text-white ${
-            rail ? 'justify-start px-[11px]' : 'justify-center'
-          }`}
-        />
-      </div>
+      {canHost && (
+        <div className="space-y-2">
+          <form action={createQuizAction} onSubmit={onNavigate}>
+            <button
+              type="submit"
+              aria-label={rail ? 'New quiz' : undefined}
+              className={`flex h-11 w-full items-center gap-2 rounded-xl bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] font-semibold text-white shadow-lift transition hover:brightness-110 ${
+                rail ? 'justify-start px-3' : 'justify-center'
+              }`}
+            >
+              <Plus className="size-4 shrink-0" aria-hidden="true" />
+              <span className={label}>New quiz</span>
+            </button>
+          </form>
+        </div>
+      )}
 
       <nav aria-label="Main" className="space-y-1">
         {nav.map(({ href, label: text, Icon, ready }) => {
@@ -267,7 +264,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
         open={signOutOpen}
         onClose={() => setSignOutOpen(false)}
         title="Sign out?"
-        description="You’ll need to sign in again to edit quizzes or host a game."
+        description="You’ll need to sign in again to join quizzes or see your history."
         size="max-w-sm"
       >
         <form action={logoutAction} className="flex justify-end gap-2">

@@ -1,12 +1,12 @@
 import { eventFeedbackCsv } from '@thinkwise/shared';
 import { getDb, getEventFeedbackExport } from '@thinkwise/db';
-import { getCurrentUser } from '@/lib/session';
+import { getHostUser } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDateTime, isoDay } from '@/lib/time';
 
 /** Host-only spreadsheet of an event's feedback beside each participant's quiz result. */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
+  const user = await getHostUser();
   if (!user) return new Response('Sign in to download feedback.', { status: 401 });
   const { id } = await params;
   const data = await getEventFeedbackExport(getDb(), user.id, id);

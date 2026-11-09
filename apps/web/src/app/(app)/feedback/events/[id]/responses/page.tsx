@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft, Download, MessageSquareText } from 'lucide-react';
 import { getDb, getEventFeedbackExport, getFeedbackEvent } from '@thinkwise/db';
 import { summarizeResponses, questionHeading, type QuestionSummary } from '@thinkwise/shared';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDateTime } from '@/lib/time';
 
@@ -137,7 +137,7 @@ export default async function ResponsesPage({
 }) {
   const { id } = await params;
   const { session } = await searchParams;
-  const user = await requireUser(`/feedback/events/${id}/responses`);
+  const user = await requireHost(`/feedback/events/${id}/responses`);
   const db = getDb();
   const [event, data, timeZone] = await Promise.all([getFeedbackEvent(db, user.id, id), getEventFeedbackExport(db, user.id, id), getTimeZone()]);
   if (!event || !data) notFound();

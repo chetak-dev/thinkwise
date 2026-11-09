@@ -1,14 +1,14 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getDb, getFeedbackEvent, listFeedbackForms, listQuizzes } from '@thinkwise/db';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 import { NewEventForm } from '../../../new/NewEventForm';
 
 export const metadata: Metadata = { title: 'Edit event · ThinkWise' };
 
 export default async function EditEventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireUser(`/feedback/events/${id}/edit`);
+  const user = await requireHost(`/feedback/events/${id}/edit`);
   const db = getDb();
   const [event, quizzes, forms] = await Promise.all([
     getFeedbackEvent(db, user.id, id),

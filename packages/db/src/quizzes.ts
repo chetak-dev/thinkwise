@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, ilike, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -28,7 +28,7 @@ export type QuizSave = z.input<typeof QuizSave>;
 
 export type QuizStatus = 'draft' | 'published';
 
-export const LIBRARY_SCOPES = ['mine', 'drafts', 'published', 'favorites', 'org', 'public', 'archived'] as const;
+export const LIBRARY_SCOPES = ['mine', 'drafts', 'published', 'favorites', 'public', 'archived'] as const;
 export type LibraryScope = (typeof LIBRARY_SCOPES)[number];
 export type Visibility = QuizSettings['visibility'];
 
@@ -90,8 +90,7 @@ export async function listQuizzes(
     scope = 'mine',
     q = '',
     limit = 100,
-    orgId = null,
-  }: { scope?: LibraryScope; q?: string; limit?: number; orgId?: string | null } = {},
+  }: { scope?: LibraryScope; q?: string; limit?: number } = {},
 ): Promise<QuizSummary[]> {
   const fav = and(eq(favourites.quizId, quizzes.id), eq(favourites.userId, userId));
   const owned = eq(quizzes.ownerId, userId);
@@ -101,7 +100,6 @@ export async function listQuizzes(
     drafts: and(owned, live, eq(quizzes.status, 'draft')),
     published: and(owned, live, eq(quizzes.status, 'published')),
     favorites: and(isNotNull(favourites.quizId), or(and(owned, live), shared)),
-    org: orgId ? and(eq(quizzes.orgId, orgId), ne(quizzes.ownerId, userId), shared) : sql`false`,
     public: and(shared, sql`${visibilitySql} = 'public'`),
     archived: and(owned, isNotNull(quizzes.archivedAt)),
   };

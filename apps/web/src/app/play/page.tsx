@@ -830,11 +830,6 @@ function PlayFlow() {
 
             {step === 'lobby' && (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-center">
-                {rules.orgName && (
-                  <p className="text-xs font-bold uppercase tracking-[.18em]" style={{ color: rules.themeColour }}>
-                    {rules.orgName}
-                  </p>
-                )}
                 <span className="inline-block animate-float text-6xl" aria-hidden="true">
                   {me.avatar}
                 </span>

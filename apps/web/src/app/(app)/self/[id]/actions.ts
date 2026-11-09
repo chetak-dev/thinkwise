@@ -2,10 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { canHost, closeSelfSession, getDb, reopenSelfSession, updateSelfSettings } from '@thinkwise/db';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 
 export async function closeSelfAction(id: string) {
-  const user = await requireUser();
+  const user = await requireHost();
   const ok = await closeSelfSession(getDb(), user.id, String(id));
   revalidatePath(`/self/${id}`);
   revalidatePath('/dashboard');
@@ -24,7 +24,7 @@ export interface SelfSettingsInput {
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 
 export async function updateSelfSettingsAction(id: string, input: SelfSettingsInput) {
-  const user = await requireUser();
+  const user = await requireHost();
   const i = input ?? {};
   const result = await updateSelfSettings(getDb(), user.id, String(id), {
     ...(typeof i.title === 'string' ? { title: i.title } : {}),
@@ -40,7 +40,7 @@ export async function updateSelfSettingsAction(id: string, input: SelfSettingsIn
 }
 
 export async function reopenSelfAction(id: string, input: { opensAtMs: number; closesAtMs: number; timeLimitMinutes: number }) {
-  const user = await requireUser();
+  const user = await requireHost();
   if (!canHost(user)) return { ok: false as const, error: 'Only admins can host quizzes.' };
   if (!finite(input?.opensAtMs) || !finite(input?.closesAtMs) || !finite(input?.timeLimitMinutes)) {
     return { ok: false as const, error: 'Fill in when it opens, closes and the time limit.' };

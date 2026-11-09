@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
 import { getDb, listFeedbackForms, listQuizzes } from '@thinkwise/db';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 import { NewEventForm } from './NewEventForm';
 
 export const metadata: Metadata = { title: 'New interactive event · ThinkWise' };
 
 export default async function NewEventPage() {
-  const user = await requireUser('/feedback/new');
+  const user = await requireHost('/feedback/new');
   const db = getDb();
   const [quizzes, forms] = await Promise.all([listQuizzes(db, user.id, { scope: 'mine' }), listFeedbackForms(db, user.id)]);
 

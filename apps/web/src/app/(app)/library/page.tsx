@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BookOpenCheck, Search } from 'lucide-react';
-import { LIBRARY_SCOPES, getDb, listQuizzes, sessionCounts, type LibraryScope } from '@thinkwise/db';
-import { requireUser } from '@/lib/session';
+import { getDb, listQuizzes, sessionCounts, type LibraryScope } from '@thinkwise/db';
+import { requireHost } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { QuizCard } from '@/components/QuizCard';
 import { NewQuizButton } from '@/components/NewQuizButton';
@@ -15,20 +15,17 @@ const TABS: { scope: LibraryScope; label: string; empty: string }[] = [
   { scope: 'drafts', label: 'Drafts', empty: 'Quizzes you haven’t published yet will show up here.' },
   { scope: 'published', label: 'Published', empty: 'Publish a finished quiz from the editor and it will appear here.' },
   { scope: 'favorites', label: 'Favourites', empty: 'Tap the heart on any quiz to keep it close at hand.' },
-  { scope: 'org', label: 'Organisation', empty: 'Quizzes your colleagues publish as Public or Unlisted will appear here.' },
   { scope: 'public', label: 'Public', empty: 'Quizzes that hosts publish as Public will appear here.' },
   { scope: 'archived', label: 'Archived', empty: 'Archived quizzes are tucked away here, ready to restore.' },
 ];
 
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ q?: string; scope?: string }> }) {
-  const user = await requireUser('/library');
+  const user = await requireHost('/library');
   const params = await searchParams;
   const q = (params.q ?? '').trim().slice(0, 100);
-  const scope: LibraryScope = (LIBRARY_SCOPES as readonly string[]).includes(params.scope ?? '')
-    ? (params.scope as LibraryScope)
-    : 'mine';
-  const tab = TABS.find((t) => t.scope === scope)!;
-  const quizzes = await listQuizzes(getDb(), user.id, { scope, q, orgId: user.orgId });
+  const tab = TABS.find((t) => t.scope === params.scope) ?? TABS[0]!;
+  const scope = tab.scope;
+  const quizzes = await listQuizzes(getDb(), user.id, { scope, q });
   const [counts, timeZone] = await Promise.all([sessionCounts(getDb(), user.id, quizzes.map((x) => x.id)), getTimeZone()]);
 
   return (
@@ -110,11 +107,6 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
             <>
               <h2 className="mt-4 font-display text-lg font-bold">No quizzes match “{q}”</h2>
               <p className="mt-1 text-sm text-muted">Try a different word, or clear the search.</p>
-            </>
-          ) : scope === 'org' && !user.orgId ? (
-            <>
-              <h2 className="mt-4 font-display text-lg font-bold">You’re not in an organisation</h2>
-              <p className="mt-1 max-w-md text-sm text-muted">Join or create one to share quizzes with colleagues.</p>
             </>
           ) : scope === 'mine' ? (
             <>

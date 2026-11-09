@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { countEventFeedback, getDb, getFeedbackEvent, listEventSessions } from '@thinkwise/db';
 import { EVENT_FLOW_INFO, EVENT_IDENTITY_INFO } from '@thinkwise/shared';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDateTime } from '@/lib/time';
 import { StatusBadge } from '@/components/SessionBits';
@@ -32,7 +32,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 export default async function EventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireUser(`/feedback/events/${id}`);
+  const user = await requireHost(`/feedback/events/${id}`);
   const db = getDb();
   const [event, sessions, feedback, timeZone] = await Promise.all([
     getFeedbackEvent(db, user.id, id),

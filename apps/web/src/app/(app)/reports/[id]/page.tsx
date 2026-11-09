@@ -10,7 +10,7 @@ import {
   type QuestionStats,
 } from '@thinkwise/shared';
 import { getDb, getSessionReport, type SessionPlayer } from '@thinkwise/db';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDateTime } from '@/lib/time';
 import { MODE_LABELS, StatusBadge } from '@/components/SessionBits';
@@ -74,7 +74,7 @@ function AnswerCell({ player, q }: { player: SessionPlayer; q: QuestionStats }) 
 
 export default async function ReportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireUser(`/reports/${id}`);
+  const user = await requireHost(`/reports/${id}`);
   const report = await getSessionReport(getDb(), user.id, id);
   if (!report) notFound();
 

@@ -16,11 +16,11 @@ import {
   updateFeedbackEvent,
 } from '@thinkwise/db';
 import { FeedbackFormSave, toPlayable, type FeedbackEventInput } from '@thinkwise/shared';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 import { createLiveGame } from '@/lib/realtime';
 
 export async function createFeedbackFormAction() {
-  const user = await requireUser();
+  const user = await requireHost();
   const id = await createFeedbackForm(getDb(), user);
   revalidatePath('/feedback');
   redirect(`/feedback/forms/${id}`);
@@ -29,7 +29,7 @@ export async function createFeedbackFormAction() {
 export type FormSaveResult = { ok: true; version: number } | { ok: false; error: string };
 
 export async function saveFeedbackFormAction(id: string, input: unknown): Promise<FormSaveResult> {
-  const user = await requireUser();
+  const user = await requireHost();
   const parsed = FeedbackFormSave.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Some of this form couldn’t be saved.' };
   const saved = await saveFeedbackForm(getDb(), user.id, id, parsed.data);
@@ -39,7 +39,7 @@ export async function saveFeedbackFormAction(id: string, input: unknown): Promis
 }
 
 export async function createFeedbackEventAction(input: FeedbackEventInput): Promise<{ ok: false; error: string }> {
-  const user = await requireUser();
+  const user = await requireHost();
   const result = await createFeedbackEvent(getDb(), user, input);
   if (!result.ok) return result;
   revalidatePath('/feedback');
@@ -47,7 +47,7 @@ export async function createFeedbackEventAction(input: FeedbackEventInput): Prom
 }
 
 export async function updateFeedbackEventAction(id: string, input: FeedbackEventInput): Promise<{ ok: false; error: string }> {
-  const user = await requireUser();
+  const user = await requireHost();
   const result = await updateFeedbackEvent(getDb(), user, id, input);
   if (!result.ok) return result;
   revalidatePath('/feedback');
@@ -56,14 +56,14 @@ export async function updateFeedbackEventAction(id: string, input: FeedbackEvent
 }
 
 export async function deleteFeedbackEventAction(id: string) {
-  const user = await requireUser();
+  const user = await requireHost();
   await deleteFeedbackEvent(getDb(), user, id);
   revalidatePath('/feedback');
   redirect('/feedback');
 }
 
 export async function deleteFeedbackFormAction(id: string) {
-  const user = await requireUser();
+  const user = await requireHost();
   await deleteFeedbackForm(getDb(), user, id);
   revalidatePath('/feedback');
   redirect('/feedback');
@@ -73,7 +73,7 @@ export type LaunchResult = { ok: true; gameId: string; hostToken: string; quizId
 
 /** Opens a live lobby for the event's quiz; each launch is recorded as its own session. */
 export async function launchFeedbackEventAction(id: string): Promise<LaunchResult> {
-  const user = await requireUser();
+  const user = await requireHost();
   if (!canHost(user)) return { ok: false, error: 'Only admins can launch events. Ask a site admin for access.' };
   const db = getDb();
   const event = await getFeedbackEvent(db, user.id, id);

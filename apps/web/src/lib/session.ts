@@ -31,6 +31,12 @@ export async function requireHost(next = '/dashboard'): Promise<PublicUser> {
   return user;
 }
 
+/** For host APIs: the signed-in account, but only if it may create and host quizzes. */
+export async function getHostUser(): Promise<PublicUser | null> {
+  const user = await getCurrentUser();
+  return user && canHost(user) ? user : null;
+}
+
 /** For pages only site admins may open. */
 export async function requireSiteAdmin(next = '/dashboard'): Promise<PublicUser> {
   const user = await requireUser(next);

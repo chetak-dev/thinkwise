@@ -25,13 +25,13 @@ import {
   setFavourite,
   totalTimeMs,
 } from '@thinkwise/db';
-import { CSV_MAX_BYTES, SAMPLE_QUIZ, csvToQuestions, toPlayable, type GameMode, type PlayableQuiz } from '@thinkwise/shared';
+import { CSV_MAX_BYTES, csvToQuestions, toPlayable, type GameMode, type PlayableQuiz } from '@thinkwise/shared';
 import { randomUUID } from 'node:crypto';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 import { createLiveGame } from '@/lib/realtime';
 
 export async function createQuizAction() {
-  const user = await requireUser();
+  const user = await requireHost();
   const id = await createQuiz(getDb(), user);
   redirect(`/quiz/${id}/edit`);
 }
@@ -40,7 +40,7 @@ export type ImportResult = { ok: false; error: string; errors?: { row: number; m
 
 /** Creates a new quiz from an uploaded CSV. Rows with problems are reported, not silently dropped. */
 export async function importQuizCsvAction(fileName: string, text: string): Promise<ImportResult> {
-  const user = await requireUser();
+  const user = await requireHost();
   if (typeof text !== 'string' || text.length > CSV_MAX_BYTES) return { ok: false, error: 'The file is larger than 256 KB.' };
   const { questions, errors } = csvToQuestions(text, randomUUID);
   if (errors.length) {
@@ -58,7 +58,7 @@ export async function importQuizCsvAction(fileName: string, text: string): Promi
 }
 
 export async function duplicateQuizAction(id: string) {
-  const user = await requireUser();
+  const user = await requireHost();
   const copy = await duplicateQuiz(getDb(), user, id);
   revalidatePath('/library');
   revalidatePath('/dashboard');
@@ -66,7 +66,7 @@ export async function duplicateQuizAction(id: string) {
 }
 
 export async function deleteQuizAction(id: string) {
-  const user = await requireUser();
+  const user = await requireHost();
   const ok = await deleteQuiz(getDb(), user, id);
   revalidatePath('/library');
   revalidatePath('/dashboard');
@@ -74,7 +74,7 @@ export async function deleteQuizAction(id: string) {
 }
 
 export async function setFavouriteAction(id: string, on: boolean) {
-  const user = await requireUser();
+  const user = await requireHost();
   const ok = await setFavourite(getDb(), user.id, id, on === true);
   revalidatePath('/library');
   revalidatePath('/dashboard');
@@ -82,7 +82,7 @@ export async function setFavouriteAction(id: string, on: boolean) {
 }
 
 export async function setArchivedAction(id: string, archived: boolean) {
-  const user = await requireUser();
+  const user = await requireHost();
   const ok = await setArchived(getDb(), user, id, archived === true);
   revalidatePath('/library');
   revalidatePath('/dashboard');
@@ -92,7 +92,7 @@ export async function setArchivedAction(id: string, archived: boolean) {
 export type SaveResult = { ok: true; savedAt: string } | { ok: false; error: string };
 
 export async function saveQuizAction(id: string, input: unknown): Promise<SaveResult> {
-  const user = await requireUser();
+  const user = await requireHost();
   const parsed = QuizSave.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Some of this quiz couldn’t be saved. Check the highlighted questions.' };
   const savedAt = await saveQuiz(getDb(), user.id, id, parsed.data);
@@ -114,7 +114,7 @@ function notReadyMessage(check: { empty: boolean; titleMissing: boolean; problem
 export type PublishActionResult = { ok: true; publishedAt: string } | Extract<HostResult, { ok: false }>;
 
 export async function publishQuizAction(id: string): Promise<PublishActionResult> {
-  const user = await requireUser();
+  const user = await requireHost();
   const result = await publishQuiz(getDb(), user, id);
   if (!result.ok) {
     if (result.reason === 'not_found') return { ok: false, error: 'This quiz no longer exists.' };
@@ -198,7 +198,7 @@ async function startSelf(
 }
 
 export async function hostQuizAction(id: string, options?: StartOptions): Promise<HostResult> {
-  const user = await requireUser();
+  const user = await requireHost();
   if (!canHost(user)) return { ok: false, error: NO_HOST_ACCESS };
   const quiz = await getQuiz(getDb(), user.id, id);
   if (!quiz) return { ok: false, error: 'This quiz no longer exists.' };
@@ -226,7 +226,7 @@ export async function hostQuizAction(id: string, options?: StartOptions): Promis
 
 /** Hosts the published copy of a quiz shared with (or owned by) the signed-in host. */
 export async function hostPublishedQuizAction(id: string, options?: StartOptions): Promise<HostResult> {
-  const user = await requireUser();
+  const user = await requireHost();
   if (!canHost(user)) return { ok: false, error: NO_HOST_ACCESS };
   const quiz = await getHostablePublished(getDb(), user.id, id);
   if (!quiz) return { ok: false, error: 'This quiz isn’t available to host.' };
@@ -250,40 +250,19 @@ export async function hostPublishedQuizAction(id: string, options?: StartOptions
   }
 }
 
-/** Hosts the built-in sample quiz as a recorded live game, so signed-in players can join it like any other. */
-export async function hostSampleAction(): Promise<HostResult> {
-  const user = await requireUser();
-  if (!canHost(user)) return { ok: false, error: NO_HOST_ACCESS };
-  try {
-    const game = await createLiveGame(SAMPLE_QUIZ, { autoAdvance: true, mode: 'live' });
-    await createGameSession(getDb(), user, {
-      gameId: game.gameId,
-      pin: game.pin,
-      quizId: null,
-      title: SAMPLE_QUIZ.title,
-      questionCount: SAMPLE_QUIZ.questions.length,
-      hostToken: game.hostToken,
-      quiz: SAMPLE_QUIZ,
-    });
-    return { ok: true, gameId: game.gameId, hostToken: game.hostToken };
-  } catch {
-    return { ok: false, error: 'The game server isn’t responding. Please try again in a moment.' };
-  }
-}
-
 export type ResumeResult =
   | { ok: true; gameId: string; hostToken: string; quizId: string | null; source: 'draft' | 'published' }
   | { ok: false; error: string };
 
 /** Hands the owner the controls of one of their running games again (e.g. from a new tab). */
 export async function resumeSessionAction(id: string): Promise<ResumeResult> {
-  const user = await requireUser();
+  const user = await requireHost();
   const session = await getResumableSession(getDb(), user.id, id);
   return session ? { ok: true, ...session } : { ok: false, error: 'This game has already ended.' };
 }
 
 export async function copyQuizAction(id: string) {
-  const user = await requireUser();
+  const user = await requireHost();
   const copy = await copyQuiz(getDb(), user, id);
   if (!copy) return { ok: false as const, error: 'This quiz can’t be copied.' };
   revalidatePath('/library');

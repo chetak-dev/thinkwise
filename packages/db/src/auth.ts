@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { and, eq, gt, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Db } from './client';
-import { auditLog, organisations, sessions, users, type User } from './schema';
+import { auditLog, sessions, users, type User } from './schema';
 
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const BCRYPT_ROUNDS = 12;
@@ -22,7 +22,6 @@ export const RegisterInput = z.object({
     .string()
     .min(8, 'Use at least 8 characters.')
     .refine((p) => Buffer.byteLength(p, 'utf8') <= 72, 'Use at most 72 characters.'),
-  organisation: z.string().trim().max(120).optional().default(''),
 });
 export type RegisterInput = z.input<typeof RegisterInput>;
 
@@ -54,16 +53,11 @@ export async function registerUser(db: Db, input: RegisterInput): Promise<{ ok: 
   const passwordHash = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
   try {
     const user = await db.transaction(async (tx) => {
-      let orgId: string | null = null;
-      if (data.organisation) {
-        const [org] = await tx.insert(organisations).values({ name: data.organisation }).returning({ id: organisations.id });
-        orgId = org!.id;
-      }
       const [created] = await tx
         .insert(users)
-        .values({ email: data.email, name: data.name, passwordHash, role: orgId ? 'org_admin' : 'host', orgId })
+        .values({ email: data.email, name: data.name, passwordHash, role: 'host' })
         .returning(publicColumns);
-      await tx.insert(auditLog).values({ orgId, userId: created!.id, action: 'auth.register' });
+      await tx.insert(auditLog).values({ userId: created!.id, action: 'auth.register' });
       return created!;
     });
     return { ok: true, user };
@@ -167,8 +161,3 @@ export async function purgeExpiredSessions(db: Db) {
   await db.delete(sessions).where(lt(sessions.expiresAt, new Date()));
 }
 
-export async function getOrganisationName(db: Db, orgId: string | null) {
-  if (!orgId) return null;
-  const [org] = await db.select({ name: organisations.name }).from(organisations).where(eq(organisations.id, orgId)).limit(1);
-  return org?.name ?? null;
-}

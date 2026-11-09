@@ -176,7 +176,6 @@ export function Stage({
           style={branded ? { background: `linear-gradient(135deg, ${rules.themeColour}, color-mix(in srgb, ${rules.themeColour} 55%, #0c0a1d))` } : undefined}
         >
           <div>
-            {rules.orgName && <p className="mb-2 text-sm font-bold uppercase tracking-[.18em] text-white/75">{rules.orgName}</p>}
             <p className="text-lg font-semibold text-white/80">
               Go to <span className="font-bold text-white">{joinUrl ? `${new URL(joinUrl).host}/play` : '…'}</span> and
               enter

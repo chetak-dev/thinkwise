@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { scoredQuestionCount } from '@thinkwise/shared';
 import { getDb, getSessionReport, type SessionPlayer } from '@thinkwise/db';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDate } from '@/lib/time';
 import { PrintButton } from '@/components/PrintButton';
@@ -107,7 +107,7 @@ export default async function CertificatesPage({
   searchParams: Promise<{ top?: string | string[] }>;
 }) {
   const { id } = await params;
-  const user = await requireUser(`/reports/${id}/certificates`);
+  const user = await requireHost(`/reports/${id}/certificates`);
   const report = await getSessionReport(getDb(), user.id, id);
   if (!report) notFound();
 

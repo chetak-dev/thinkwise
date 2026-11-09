@@ -201,13 +201,12 @@ test('library: scopes, search by title/subject/tag, favourites and archive', asy
   assert.deepEqual(await q.listQuizzes(db, cara.id, { scope: 'favorites' }), []);
 });
 
-test('sharing: public/unlisted/private, org tab, read-only published copy, host and copy', async () => {
-  const d = await auth.registerUser(db, { name: 'Dee', email: 'dee@example.com', password: 'dee-pass-123', organisation: 'Dee School' });
+test('sharing: public/unlisted/private, read-only published copy, host and copy', async () => {
+  const d = await auth.registerUser(db, { name: 'Dee', email: 'dee@example.com', password: 'dee-pass-123' });
   const e = await auth.registerUser(db, { name: 'Eli', email: 'eli@example.com', password: 'eli-pass-123' });
   if (!d.ok || !e.ok) throw new Error('setup failed');
   const dee = d.user;
-  await db.update(schema.users).set({ orgId: dee.orgId }).where(eq(schema.users.id, e.user.id));
-  const eli = { ...e.user, orgId: dee.orgId };
+  const eli = e.user;
   const ids = (list: { id: string }[]) => list.map((x) => x.id).sort();
 
   const ready = [
@@ -242,9 +241,6 @@ test('sharing: public/unlisted/private, org tab, read-only published copy, host 
   assert.equal(card.authorName, 'Dee');
   assert.deepEqual(await q.listQuizzes(db, bob.id, { scope: 'public', q: 'rename' }), [], 'draft title is not searchable by others');
 
-  assert.deepEqual(ids(await q.listQuizzes(db, eli.id, { scope: 'org', orgId: eli.orgId })), [pub, unl].sort(), 'org tab: shared quizzes from colleagues');
-  assert.deepEqual(await q.listQuizzes(db, bob.id, { scope: 'org', orgId: null }), [], 'no organisation, no org quizzes');
-  assert.deepEqual(await q.listQuizzes(db, dee.id, { scope: 'org', orgId: dee.orgId }), [], "own quizzes aren't in the org tab");
 
   const view = await q.getSharedQuiz(db, bob.id, pub);
   assert.ok(view && view !== 'draft_only');

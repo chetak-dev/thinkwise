@@ -1,18 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, BarChart3, BookOpenCheck, Globe, Library, Maximize2, Plus, Sparkles, Users } from 'lucide-react';
-import { dashboardStats, getDb, getOrganisationName, listQuizzes, listRunningSessions, sessionCounts } from '@thinkwise/db';
+import { canHost, dashboardStats, getDb, listQuizzes, listRunningSessions, sessionCounts } from '@thinkwise/db';
 import { requireUser } from '@/lib/session';
 import { liveGameStatus, type LivePhase } from '@/lib/realtime';
 import { createQuizAction } from '@/app/(app)/quiz-actions';
 import { QuizCard } from '@/components/QuizCard';
 import { NewQuizButton } from '@/components/NewQuizButton';
 import { ResumeSessionButton } from '@/components/ResumeSessionButton';
-import { SampleHostLink } from '@/components/SampleHostLink';
 import { Greeting } from '@/components/Greeting';
 import { MODE_LABELS, StatusBadge } from '@/components/SessionBits';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDateTime } from '@/lib/time';
+import { ParticipantHome } from './ParticipantHome';
 
 export const metadata: Metadata = { title: 'Home · ThinkWise' };
 
@@ -41,9 +41,9 @@ function StatCard({ label, value, hint, Icon }: { label: string; value: number; 
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  if (!canHost(user)) return <ParticipantHome user={user} />;
   const db = getDb();
-  const [orgName, recent, stats, timeZone, candidates] = await Promise.all([
-    getOrganisationName(db, user.orgId),
+  const [recent, stats, timeZone, candidates] = await Promise.all([
     listQuizzes(db, user.id, { limit: 6 }),
     dashboardStats(db, user.id, RECENT_SESSIONS),
     getTimeZone(),
@@ -68,8 +68,7 @@ export default async function DashboardPage() {
         <Greeting />
         <h1 className="mt-1 font-display text-4xl font-bold sm:text-5xl">{firstName} ✨</h1>
         <p className="mt-3 max-w-xl text-white/85">
-          {orgName ? `${orgName} · ` : ''}Write a quiz, put the PIN on the big screen and let everyone play from their
-          phones.
+          Write a quiz, put the PIN on the big screen and let everyone play from their phones.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <form action={createQuizAction}>
@@ -81,7 +80,6 @@ export default async function DashboardPage() {
               New quiz
             </button>
           </form>
-          <SampleHostLink className="inline-flex h-12 items-center gap-2 rounded-xl bg-white/15 px-5 font-semibold text-white transition hover:bg-white/25" />
           <Link
             href="/library?scope=public"
             className="inline-flex h-12 items-center gap-2 rounded-xl bg-white/15 px-5 font-semibold text-white transition hover:bg-white/25"

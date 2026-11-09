@@ -4,7 +4,6 @@ import {
   DESCRIPTION_MAX,
   GRACE_MS_VALUES,
   MESSAGE_MAX,
-  ORG_NAME_MAX,
   QUIZ_LANGUAGES,
   SUBJECT_MAX,
   TAGS_MAX,
@@ -143,16 +142,6 @@ export function QuizSettingsDialog({
           </div>
 
           <h3 className={`pt-2 ${HEADING}`}>Branding</h3>
-          <label className={LABEL}>
-            Organisation name
-            <input
-              value={s.orgName}
-              maxLength={ORG_NAME_MAX}
-              placeholder="Shown to players in the lobby"
-              onChange={(e) => onSettings({ orgName: e.target.value }, 'orgName')}
-              className={FIELD}
-            />
-          </label>
           <div className="space-y-1.5">
             <p className="text-sm font-semibold">Theme colour</p>
             <div className="flex flex-wrap items-center gap-2">

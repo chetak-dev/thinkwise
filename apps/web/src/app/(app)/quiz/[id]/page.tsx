@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { QUESTION_TYPE_LABELS, answerKeyText, isScored, usesOptions } from '@thinkwise/shared';
 import { getDb, getSharedQuiz } from '@thinkwise/db';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 import { SharedQuizActions } from './SharedQuizActions';
 
 export const metadata: Metadata = { title: 'Quiz · ThinkWise' };
@@ -14,7 +14,7 @@ function formatTime(ms: number) {
 
 export default async function SharedQuizPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireUser(`/quiz/${id}`);
+  const user = await requireHost(`/quiz/${id}`);
   const view = await getSharedQuiz(getDb(), user.id, id);
   if (view === 'draft_only') redirect(`/quiz/${id}/edit`);
   if (!view) notFound();

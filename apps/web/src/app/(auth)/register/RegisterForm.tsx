@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { registerAction, type FormState } from '../actions';
 import { FieldError, INPUT, SUBMIT } from '../AuthShell';
 
-type Field = 'name' | 'email' | 'password' | 'organisation';
+type Field = 'name' | 'email' | 'password';
 
 export function RegisterForm({ next = '/dashboard' }: { next?: string }) {
   const [state, action, pending] = useActionState<FormState | undefined, FormData>(registerAction, undefined);
@@ -69,23 +69,6 @@ export function RegisterForm({ next = '/dashboard' }: { next?: string }) {
           8 characters or more
         </p>
         <FieldError id="password-error" message={err('password')} />
-      </div>
-      <div className="space-y-1.5">
-        <label htmlFor="organisation" className="block text-sm font-semibold text-app">
-          School or organisation (optional)
-        </label>
-        <input
-          id="organisation"
-          name="organisation"
-          autoComplete="organization"
-          maxLength={120}
-          defaultValue={state?.values?.organisation}
-          aria-describedby="organisation-hint"
-          className={INPUT}
-        />
-        <p id="organisation-hint" className="text-xs text-muted">
-          Add one to manage colleagues and shared branding later. You’ll be its admin.
-        </p>
       </div>
       {state?.error && (
         <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">

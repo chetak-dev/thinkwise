@@ -1,12 +1,12 @@
 import { reportToCsv } from '@thinkwise/shared';
 import { getDb, getSessionReport } from '@thinkwise/db';
-import { getCurrentUser } from '@/lib/session';
+import { getHostUser } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { isoDay } from '@/lib/time';
 
 /** Host-only spreadsheet of a finished game. */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
+  const user = await getHostUser();
   if (!user) return new Response('Sign in to download reports.', { status: 401 });
   const { id } = await params;
   const report = await getSessionReport(getDb(), user.id, id);

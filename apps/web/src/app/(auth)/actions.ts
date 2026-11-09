@@ -16,8 +16,8 @@ import { SESSION_COOKIE, afterSignIn, clearSessionCookie, getCurrentUser, safeNe
 
 export interface FormState {
   error?: string;
-  fieldErrors?: Partial<Record<'name' | 'email' | 'password' | 'organisation', string>>;
-  values?: { name?: string; email?: string; organisation?: string };
+  fieldErrors?: Partial<Record<'name' | 'email' | 'password', string>>;
+  values?: { name?: string; email?: string };
 }
 
 const WINDOW_MS = 15 * 60 * 1000;
@@ -46,10 +46,9 @@ export async function registerAction(_prev: FormState | undefined, form: FormDat
     name: String(form.get('name') ?? ''),
     email: String(form.get('email') ?? ''),
     password: String(form.get('password') ?? ''),
-    organisation: String(form.get('organisation') ?? ''),
   };
   const next = safeNext(form.get('next'));
-  const values = { name: raw.name, email: raw.email, organisation: raw.organisation };
+  const values = { name: raw.name, email: raw.email };
   const parsed = RegisterInput.safeParse(raw);
   if (!parsed.success) {
     const fieldErrors: FormState['fieldErrors'] = {};

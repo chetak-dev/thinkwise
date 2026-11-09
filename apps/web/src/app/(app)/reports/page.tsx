@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BarChart3, Users } from 'lucide-react';
 import { getDb, listSessions } from '@thinkwise/db';
-import { requireUser } from '@/lib/session';
+import { requireHost } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDateTime } from '@/lib/time';
 import { MODE_LABELS, StatusBadge } from '@/components/SessionBits';
@@ -10,7 +10,7 @@ import { MODE_LABELS, StatusBadge } from '@/components/SessionBits';
 export const metadata: Metadata = { title: 'Reports · ThinkWise' };
 
 export default async function ReportsPage() {
-  const user = await requireUser('/reports');
+  const user = await requireHost('/reports');
   const [sessions, timeZone] = await Promise.all([listSessions(getDb(), user.id, 200), getTimeZone()]);
 
   return (
