@@ -133,7 +133,7 @@ export interface StartOptions {
   closesAt?: unknown;
   /** Self-paced only: each participant's time to finish. */
   timeLimitMs?: unknown;
-  /** Self-paced only: each participant gets their own question and option order. */
+  /** Self-paced: each participant gets their own question and option order. Live: their own option order. */
   shuffleEach?: unknown;
   /** Self-paced only: overrides the quiz's own settings. */
   showLeaderboard?: unknown;
@@ -145,7 +145,11 @@ const NO_HOST_ACCESS = 'Only admins can host quizzes. Ask a site admin for acces
 /** Untrusted options from the start dialog, reduced to what the game server accepts. */
 function startOptions(options?: StartOptions) {
   const mode: GameMode = options?.mode === 'self' ? 'self' : 'live';
-  return { autoAdvance: mode === 'live' && options?.autoAdvance !== false, mode };
+  return {
+    autoAdvance: mode === 'live' && options?.autoAdvance !== false,
+    mode,
+    mixOptions: options?.shuffleEach !== false,
+  };
 }
 
 /**

@@ -76,7 +76,7 @@ export function StartSessionDialog({
 
   const start = () => {
     if (mode === 'live') {
-      onStart({ autoAdvance, mode });
+      onStart({ autoAdvance, mode, shuffleEach });
       return;
     }
     const opens = opensLater ? new Date(opensAt).getTime() : Date.now();
@@ -130,12 +130,20 @@ export function StartSessionDialog({
           })}
         </div>
         {mode === 'live' && (
-          <Switch
-            checked={autoAdvance}
-            onChange={setAutoAdvance}
-            label="Auto-advance"
-            description="Step through the reveal and leaderboard on its own, 5 s each"
-          />
+          <div className="space-y-3">
+            <Switch
+              checked={autoAdvance}
+              onChange={setAutoAdvance}
+              label="Auto-advance"
+              description="Step through the reveal and leaderboard on its own, 5 s each"
+            />
+            <Switch
+              checked={shuffleEach}
+              onChange={setShuffleEach}
+              label="Different answer order for each player"
+              description="Mixes up the answer options on every phone, so neighbours can’t copy. True/false stays as is."
+            />
+          </div>
         )}
         {mode === 'self' && (
           <div className="space-y-3 rounded-2xl border border-app p-4">

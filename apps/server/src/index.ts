@@ -93,6 +93,8 @@ interface Player {
   streak: number;
   correctCount: number;
   answers: Map<number, Answer>;
+  /** orders[question][shown position] = quiz option index; each player sees their own option order. */
+  orders: Map<number, number[]>;
   /** Self-paced games: this player's own question, phase and clock. */
   selfIndex: number;
   selfPhase: 'idle' | 'question' | 'result' | 'done';
@@ -142,6 +144,8 @@ interface Game {
   startedAt: number | null;
   /** Events that don't allow late entry close the lobby when the quiz starts. */
   lockOnStart: boolean;
+  /** Each player sees the answer options in their own order. */
+  mixOptions: boolean;
 }
 
 type Role =
@@ -214,7 +218,7 @@ function shuffled<T>(items: T[]): T[] {
   return out;
 }
 
-/** One shuffle per game, so the host screen, projector and every phone agree on the order. */
+/** One question order per game, so the host screen and projector agree; phones also mix each player's options. */
 function arrangeQuiz(quiz: Quiz): Quiz {
   const questions = quiz.rules.shuffleQuestions ? shuffled(quiz.questions) : quiz.questions;
   const reorder = (q: Quiz['questions'][number], order: number[]) => ({
@@ -280,6 +284,55 @@ function progressMsg(game: Game): ServerMessage {
     recent: game.recent,
     ...cloudWords(game),
   };
+}
+
+/**
+ * This player's own option order for a question, made the first time they see it and kept for rejoins.
+ * True/false keeps its natural order; questions without options have none.
+ */
+function orderFor(game: Game, player: Player, index: number): number[] | null {
+  const q = game.quiz.questions[index];
+  if (!game.mixOptions || !q || q.type === 'tf' || q.options.length < 2) return null;
+  let order = player.orders.get(index);
+  if (!order || order.length !== q.options.length) {
+    const ids = q.options.map((_, i) => i);
+    order = shuffled(ids);
+    // Put-in-order items must never arrive already solved.
+    for (let tries = 0; q.type === 'order' && tries < 10 && q.correct.every((c, i) => order![i] === c); tries++) {
+      order = shuffled(ids);
+    }
+    player.orders.set(index, order);
+  }
+  return order;
+}
+
+/** Shown option → quiz option (unknown positions become out of range, so the answer is rejected). */
+function toQuizInput(game: Game, player: Player, index: number, input: AnswerInput): AnswerInput {
+  const order = orderFor(game, player, index);
+  if (!order) return input;
+  const back = (c: number) => order[c] ?? order.length;
+  return {
+    ...input,
+    ...(input.choice !== undefined ? { choice: back(input.choice) } : {}),
+    ...(input.choices ? { choices: input.choices.map(back) } : {}),
+  };
+}
+
+/** Quiz option indices → where this player sees them. */
+function toShown(game: Game, player: Player, index: number, options: number[]) {
+  const order = orderFor(game, player, index);
+  return order ? options.map((c) => order.indexOf(c)) : options;
+}
+
+function playerAnswer(game: Game, player: Player, index: number, answer: Answer): PlayerAnswer {
+  const pub = publicAnswer(answer);
+  return { ...pub, choices: toShown(game, player, index, pub.choices) };
+}
+
+function playerQuestion(game: Game, player: Player, index = game.qIndex): PublicQuestion {
+  const pub = publicQuestion(game, index, player.language);
+  const order = orderFor(game, player, index);
+  return order ? { ...pub, options: order.map((i) => pub.options[i]!) } : pub;
 }
 
 function publicQuestion(game: Game, index = game.qIndex, language = ''): PublicQuestion {
@@ -375,9 +428,9 @@ function resultMsg(game: Game, player: Player, rank: number, index = game.qIndex
   return {
     t: 'result',
     index,
-    correct: show ? q.correct : [],
+    correct: show ? toShown(game, player, index, q.correct) : [],
     ...answerKey(q, show),
-    answer: answer ? publicAnswer(answer) : null,
+    answer: answer ? playerAnswer(game, player, index, answer) : null,
     ...(answer?.partsRight !== undefined ? { partsRight: answer.partsRight } : {}),
     isCorrect: answer?.isCorrect ?? false,
     points: answer?.points ?? 0,
@@ -446,7 +499,7 @@ function startSelfQuestion(game: Game, player: Player, index: number) {
   player.selfEndsAt = Date.now() + q.timeLimitMs;
   player.selfTimer = setTimeout(() => closeSelfQuestion(game, player), q.timeLimitMs + game.quiz.rules.graceMs);
   game.selfDirty = true;
-  send(player.socket, { t: 'question', question: publicQuestion(game, index, player.language), timer: selfTimerState(game, player), myAnswer: null });
+  send(player.socket, { t: 'question', question: playerQuestion(game, player, index), timer: selfTimerState(game, player), myAnswer: null });
 }
 
 /** Answered or out of time: the player sees their result straight away. */
@@ -537,7 +590,7 @@ function startQuestion(game: Game, index: number) {
   scheduleClose(game);
   const msg: ServerMessage = { t: 'question', question: publicQuestion(game), timer: timerState(game) };
   toHosts(game, msg);
-  for (const p of game.players.values()) send(p.socket, { ...msg, question: publicQuestion(game, index, p.language) });
+  for (const p of game.players.values()) send(p.socket, { ...msg, question: playerQuestion(game, p, index) });
 }
 
 function setPaused(game: Game, paused: boolean) {
@@ -628,7 +681,7 @@ function submitAnswer(ws: WebSocket, game: Game, player: Player, index: number, 
   if (game.phase !== 'question' || index !== current || player.answers.has(index)) return;
   if (self && player.selfPhase !== 'question') return;
   const q = inLanguage(game.quiz.questions[index]!, player.language);
-  const read = readAnswer(q, input);
+  const read = readAnswer(q, toQuizInput(game, player, index, input));
   if (!read) return fail(ws, 'bad_request', 'Invalid answer.');
   const endsAt = self ? player.selfEndsAt : game.endsAt;
   if (endsAt !== null && Date.now() > endsAt + game.quiz.rules.graceMs) return;
@@ -660,7 +713,7 @@ function submitAnswer(ws: WebSocket, game: Game, player: Player, index: number, 
   const answer: Answer = { ...read, credit, points, timeMs: Math.round(elapsed) };
   player.answers.set(index, answer);
   if (self) {
-    send(ws, { t: 'answer:ok', index, answer: publicAnswer(answer) });
+    send(ws, { t: 'answer:ok', index, answer: playerAnswer(game, player, index, answer) });
     return closeSelfQuestion(game, player);
   }
   if (q.type === 'rating') {
@@ -681,7 +734,7 @@ function submitAnswer(ws: WebSocket, game: Game, player: Player, index: number, 
   );
   game.progressDirty = true;
   game.newlyAnswered.push(player.id);
-  send(ws, { t: 'answer:ok', index, answer: publicAnswer(answer) });
+  send(ws, { t: 'answer:ok', index, answer: playerAnswer(game, player, index, answer) });
   closeIfEveryoneAnswered(game);
 }
 
@@ -881,7 +934,7 @@ function syncPlayer(game: Game, player: Player) {
     if (player.selfPhase === 'done') return send(ws, selfDoneMsg(game, player));
     send(ws, {
       t: 'question',
-      question: publicQuestion(game, player.selfIndex, player.language),
+      question: playerQuestion(game, player, player.selfIndex),
       timer: selfTimerState(game, player),
       myAnswer: null,
     });
@@ -896,14 +949,14 @@ function syncPlayer(game: Game, player: Player) {
       const mine = player.answers.get(game.qIndex);
       send(ws, {
         t: 'question',
-        question: publicQuestion(game, game.qIndex, player.language),
+        question: playerQuestion(game, player),
         timer: timerState(game),
-        myAnswer: mine ? publicAnswer(mine) : null,
+        myAnswer: mine ? playerAnswer(game, player, game.qIndex, mine) : null,
       });
       break;
     }
     case 'reveal': {
-      send(ws, { t: 'question', question: publicQuestion(game, game.qIndex, player.language), timer: timerState(game), myAnswer: null });
+      send(ws, { t: 'question', question: playerQuestion(game, player), timer: timerState(game), myAnswer: null });
       send(ws, resultMsg(game, player, rankOf(game, player)));
       break;
     }
@@ -1043,6 +1096,7 @@ function createGame(quiz: Quiz, mode: GameMode = 'live'): Game {
     reported: false,
     startedAt: null,
     lockOnStart: false,
+    mixOptions: false,
   };
   games.set(game.id, game);
   gamesByPin.set(game.pin, game);
@@ -1189,6 +1243,7 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
         streak: 0,
         correctCount: 0,
         answers: new Map(),
+        orders: new Map(),
         selfIndex: -1,
         selfPhase: 'idle',
         selfEndsAt: null,
@@ -1309,9 +1364,12 @@ function createGameFromRequest(req: IncomingMessage, res: import('node:http').Se
     if (mode !== 'live' && mode !== 'self') return json(res, 422, { error: 'invalid_settings' });
     const lockOnStart = (body as { settings?: { lockOnStart?: unknown } }).settings?.lockOnStart;
     if (lockOnStart !== undefined && typeof lockOnStart !== 'boolean') return json(res, 422, { error: 'invalid_settings' });
+    const mixOptions = (body as { settings?: { mixOptions?: unknown } }).settings?.mixOptions;
+    if (mixOptions !== undefined && typeof mixOptions !== 'boolean') return json(res, 422, { error: 'invalid_settings' });
     const game = createGame(quiz, mode);
     game.report = true;
     game.lockOnStart = lockOnStart === true;
+    game.mixOptions = mixOptions === true;
     if (autoAdvance !== undefined && mode === 'live') game.settings.autoAdvance = autoAdvance;
     json(res, 201, { gameId: game.id, pin: game.pin, hostToken: game.hostToken });
   });

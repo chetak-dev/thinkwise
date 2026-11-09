@@ -18,6 +18,8 @@ export interface StartOptions {
   mode: GameMode;
   /** Close the lobby when the quiz starts (events without late entry). */
   lockOnStart?: boolean;
+  /** Each player sees the answer options in their own order. */
+  mixOptions?: boolean;
 }
 
 /** True only for requests from our game server (constant-time comparison). */

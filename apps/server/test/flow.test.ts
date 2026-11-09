@@ -761,6 +761,112 @@ test('quiz rules: accuracy scoring, no streak bonus, hidden answers and leaderbo
   for (const x of [h, p.c]) x.close();
 });
 
+test('each player gets their own option order; marking, counts and rejoins follow it', async () => {
+  const opts = ['Right', 'Wrong 1', 'Wrong 2', 'Wrong 3', 'Wrong 4', 'Wrong 5'];
+  const quiz = {
+    title: 'Mixed',
+    questions: [
+      { type: 'mc', text: 'Pick?', options: opts, correct: [0], timeLimitMs: 10_000, points: 1000 },
+      { type: 'multi', text: 'Both?', options: ['Yes A', 'No B', 'Yes C', 'No D'], correct: [0, 2], timeLimitMs: 10_000, points: 1000 },
+      { type: 'order', text: 'Sort?', options: ['1', '2', '3', '4'], correct: [0, 1, 2, 3], timeLimitMs: 10_000, points: 1000 },
+      { type: 'tf', text: 'True?', options: ['True', 'False'], correct: [0], timeLimitMs: 10_000, points: 1000 },
+    ],
+    rules: { scoring: 'accuracy', streakBonus: false },
+  };
+  const res = await fetch(`http://127.0.0.1:${PORT}/games`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...BEARER },
+    body: JSON.stringify({ quiz, settings: { mixOptions: 'yes' } }),
+  });
+  assert.equal(res.status, 422, 'setting validated');
+  const created = await createViaHttp(quiz, { mixOptions: true, autoAdvance: false });
+  const h = new Client();
+  await h.open();
+  h.send({ t: 'host:resume', gameId: created.gameId, hostToken: created.hostToken });
+  await h.next('host:ready');
+  h.send({ t: 'host:settings', settings: { leaderboardAfterEach: false } });
+  await h.next('settings', h.mark() - 1);
+  const ps = [await player(created.pin, 'P1'), await player(created.pin, 'P2'), await player(created.pin, 'P3'), await player(created.pin, 'P4')];
+
+  // Question 1: everyone picks "Right" by its text; P4 picks "Wrong 3".
+  let marks = ps.map((p) => p.c.mark());
+  let markH = h.mark();
+  h.send({ t: 'host:start' });
+  const hq = await h.next('question', markH);
+  assert.deepEqual(hq.question.options, opts, 'host and projector keep the quiz order');
+  const shown = await Promise.all(ps.map((p, i) => p.c.next('question', marks[i])));
+  for (const q of shown) assert.deepEqual([...q.question.options].sort(), [...opts].sort());
+  assert.ok(new Set(shown.map((q) => q.question.options.join('|'))).size > 1, 'players see different orders');
+
+  // A dropped phone sees the same order again, with its answer in that order.
+  const pick0 = shown[0]!.question.options.indexOf('Right');
+  marks = ps.map((p) => p.c.mark());
+  ps[0]!.c.send({ t: 'player:answer', index: 0, choice: pick0 });
+  const ok = await ps[0]!.c.next('answer:ok', marks[0]);
+  assert.deepEqual(ok.answer.choices, [pick0]);
+  ps[0]!.c.close();
+  const back = await rejoin(created.pin, ps[0]!);
+  const again = await back.next('question');
+  assert.deepEqual(again.question.options, shown[0]!.question.options, 'rejoin keeps the order');
+  assert.deepEqual(again.myAnswer?.choices, [pick0]);
+  ps[0]!.c = back;
+
+  marks = ps.map((p) => p.c.mark());
+  for (let i = 1; i < 3; i++) ps[i]!.c.send({ t: 'player:answer', index: 0, choice: shown[i]!.question.options.indexOf('Right') });
+  ps[3]!.c.send({ t: 'player:answer', index: 0, choice: shown[3]!.question.options.indexOf('Wrong 3') });
+  const results = await Promise.all(ps.map((p, i) => p.c.next('result', marks[i])));
+  for (let i = 0; i < 3; i++) {
+    assert.equal(results[i]!.isCorrect, true);
+    assert.equal(results[i]!.points, 1000);
+    assert.deepEqual(results[i]!.correct, [shown[i]!.question.options.indexOf('Right')], 'correct answer in the player’s order');
+  }
+  assert.equal(results[3]!.isCorrect, false);
+  assert.deepEqual(results[3]!.answer?.choices, [shown[3]!.question.options.indexOf('Wrong 3')]);
+  const reveal = await h.next('reveal', markH);
+  assert.deepEqual(reveal.correct, [0]);
+  assert.deepEqual(reveal.counts, [3, 0, 0, 1, 0, 0], 'host counts stay in the quiz order');
+
+  // Question 2: multi-select by text.
+  marks = ps.map((p) => p.c.mark());
+  markH = h.mark();
+  h.send({ t: 'host:next' });
+  const multi = await Promise.all(ps.map((p, i) => p.c.next('question', marks[i])));
+  marks = ps.map((p) => p.c.mark());
+  ps.forEach((p, i) => {
+    const o = multi[i]!.question.options;
+    const choices = i === 3 ? [o.indexOf('Yes A')] : [o.indexOf('Yes C'), o.indexOf('Yes A')];
+    p.c.send({ t: 'player:answer', index: 1, choices });
+  });
+  const mres = await Promise.all(ps.map((p, i) => p.c.next('result', marks[i])));
+  assert.deepEqual(mres.map((r) => r.isCorrect), [true, true, true, false]);
+  const o0 = multi[0]!.question.options;
+  assert.deepEqual([...mres[0]!.correct].sort(), [o0.indexOf('Yes A'), o0.indexOf('Yes C')].sort());
+  assert.deepEqual((await h.next('reveal', markH)).counts, [4, 0, 3, 0]);
+
+  // Question 3: put in order, never already solved on any phone.
+  marks = ps.map((p) => p.c.mark());
+  h.send({ t: 'host:next' });
+  const ord = await Promise.all(ps.map((p, i) => p.c.next('question', marks[i])));
+  marks = ps.map((p) => p.c.mark());
+  ps.forEach((p, i) => {
+    const o = ord[i]!.question.options;
+    assert.notDeepEqual(o, ['1', '2', '3', '4']);
+    p.c.send({ t: 'player:answer', index: 2, choices: ['1', '2', '3', '4'].map((x) => o.indexOf(x)) });
+  });
+  const ores = await Promise.all(ps.map((p, i) => p.c.next('result', marks[i])));
+  for (let i = 0; i < 4; i++) {
+    assert.equal(ores[i]!.isCorrect, true);
+    assert.deepEqual(ores[i]!.correct.map((c) => ord[i]!.question.options[c]), ['1', '2', '3', '4']);
+  }
+
+  // True/false keeps its natural order.
+  marks = ps.map((p) => p.c.mark());
+  h.send({ t: 'host:next' });
+  for (const [i, p] of ps.entries()) assert.deepEqual((await p.c.next('question', marks[i])).question.options, ['True', 'False']);
+
+  for (const x of [h, ...ps.map((p) => p.c)]) x.close();
+});
+
 test('saved-quiz games report results once when they end', async () => {
   const quiz = {
     title: 'Reported',
