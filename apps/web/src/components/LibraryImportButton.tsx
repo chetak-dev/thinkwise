@@ -12,10 +12,10 @@ export function LibraryImportButton() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex h-11 items-center gap-2 rounded-xl border border-app bg-surface px-5 font-semibold text-app transition hover:-translate-y-0.5 hover:border-nova-400 hover:text-nova-700 dark:hover:text-nova-300"
+        className="inline-flex h-11 w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-app bg-surface px-3 font-semibold sm:w-auto sm:px-5 text-app transition hover:-translate-y-0.5 hover:border-nova-400 hover:text-nova-700 dark:hover:text-nova-300"
       >
         <FileUp className="size-5" aria-hidden="true" />
-        Import Excel / CSV
+        Import<span className="hidden sm:inline"> Excel / CSV</span>
       </button>
       <ImportCsvDialog
         open={open}

@@ -93,11 +93,11 @@ export async function loginAction(_prev: FormState | undefined, form: FormData):
 export interface ProfileFormState {
   error?: string;
   saved?: boolean;
-  fieldErrors?: Partial<Record<'name' | 'phone' | 'address', string>>;
-  values?: { name: string; phone: string; address: string };
+  fieldErrors?: Partial<Record<'name' | 'phone' | 'address' | 'gender', string>>;
+  values?: { name: string; phone: string; address: string; gender: string };
 }
 
-/** Saves the account's name, phone and address; `next` is where to go afterwards (empty to stay on the page). */
+/** Saves the account's profile; `next` is where to go afterwards (empty to stay on the page). */
 export async function profileAction(_prev: ProfileFormState | undefined, form: FormData): Promise<ProfileFormState> {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
@@ -105,6 +105,7 @@ export async function profileAction(_prev: ProfileFormState | undefined, form: F
     name: String(form.get('name') ?? ''),
     phone: String(form.get('phone') ?? ''),
     address: String(form.get('address') ?? ''),
+    gender: String(form.get('gender') ?? ''),
   };
   if (tooMany(await clientKey(`profile|${user.id}`))) {
     return { error: 'Too many attempts. Please wait a few minutes and try again.', values };

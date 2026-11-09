@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { phoneForForm } from '@thinkwise/db';
 import { requireUser } from '@/lib/session';
 import { ProfileForm } from '@/app/(auth)/ProfileForm';
 
@@ -13,7 +14,10 @@ export default async function ProfilePage() {
         <p className="text-muted">Signed in as {user.email}</p>
       </div>
       <div className="rounded-2xl border border-app bg-surface p-6 shadow-soft">
-        <ProfileForm initial={{ name: user.name ?? '', phone: user.phone ?? '', address: user.address ?? '' }} submitLabel="Save changes" />
+        <ProfileForm
+          initial={{ name: user.name ?? '', phone: phoneForForm(user.phone), address: user.address ?? '', gender: user.gender ?? '' }}
+          submitLabel="Save changes"
+        />
       </div>
     </div>
   );

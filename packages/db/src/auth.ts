@@ -30,7 +30,7 @@ export const LoginInput = z.object({
   password: z.string().min(1).max(200),
 });
 
-export type PublicUser = Pick<User, 'id' | 'email' | 'name' | 'role' | 'orgId' | 'locale' | 'canHost' | 'phone' | 'address'>;
+export type PublicUser = Pick<User, 'id' | 'email' | 'name' | 'role' | 'orgId' | 'locale' | 'canHost' | 'phone' | 'address' | 'gender'>;
 
 const publicColumns = {
   id: users.id,
@@ -42,6 +42,7 @@ const publicColumns = {
   canHost: users.canHost,
   phone: users.phone,
   address: users.address,
+  gender: users.gender,
 };
 
 export function hashToken(token: string) {
@@ -160,4 +161,3 @@ export async function deleteSession(db: Db, token: string | undefined | null) {
 export async function purgeExpiredSessions(db: Db) {
   await db.delete(sessions).where(lt(sessions.expiresAt, new Date()));
 }
-

@@ -6,6 +6,7 @@ export * from './csv';
 export * from './results';
 export * from './feedback';
 export * from './multilingual';
+export * from './profile';
 
 /** The parts of a quiz's rules that change what screens show. */
 export type PublicRules = Pick<

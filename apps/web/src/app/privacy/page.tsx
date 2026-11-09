@@ -10,8 +10,9 @@ const SECTIONS: { title: string; body: React.ReactNode }[] = [
     body: (
       <>
         <p>
-          Joining a game needs a PIN and a signed-in account. For your account we keep your name, email address, phone number
-          and address. Only you and the site admins can see your phone number and address; hosts see your nickname and results.
+          Joining a game needs a PIN and a signed-in account. For your account we keep your name, email address, phone number,
+          address and gender choice. You can choose “Prefer not to say” for gender. Only you and the site admins can see your
+          phone number, address and gender choice; hosts see your nickname and results.
         </p>
         <p>
           For each quiz we keep the nickname, avatar and question language you choose and the answers you give, with how long
@@ -29,7 +30,7 @@ const SECTIONS: { title: string; body: React.ReactNode }[] = [
     body: (
       <>
         <p>
-          For an account we keep your name, email address, phone number and address. Passwords are stored only
+          For an account we keep your name, email address, phone number, address and gender choice. Passwords are stored only
           as a one-way hash; if you sign in with Google we keep Google’s account id instead and never see your Google password.
         </p>
         <p>

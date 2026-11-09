@@ -2,17 +2,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CSV_TEMPLATE,
+  LANGUAGE_SHEETS_EXAMPLE,
   PlayableQuiz,
   blanksRight,
   countBlanks,
   csvToQuestions,
   isAcceptedAnswer,
+  isLanguageSheet,
   isNumberMatch,
+  languageSheetsToRows,
   newQuestion,
   parseCsv,
   parseNumberAnswer,
   questionIssues,
   questionsToCsv,
+  toCsv,
   toPlayable,
 } from '../src/index';
 
@@ -285,4 +289,42 @@ test('multilingual rows say exactly which cell is wrong', () => {
   const good = csvToQuestions(`${head}\n1,English,Q?,Yes,No,,,A,20,100,\n1,Odia,Q?,Haan,Na,,,A,20,100,`, id);
   assert.deepEqual(good.errors, []);
   assert.equal(good.questions[0]!.points, 100);
+});
+
+test('one tab per language imports as translations of the same questions', () => {
+  const sheetsCsv = (sheets: { name: string; rows: string[][] }[]) => {
+    const result = languageSheetsToRows(sheets);
+    assert.ok('rows' in result, 'error' in result ? result.error : '');
+    return toCsv(result.rows);
+  };
+  assert.ok(LANGUAGE_SHEETS_EXAMPLE.every((s) => isLanguageSheet(s.rows)));
+  const sample = csvToQuestions(sheetsCsv(LANGUAGE_SHEETS_EXAMPLE), id);
+  assert.deepEqual(sample.errors, []);
+  assert.equal(sample.questions.length, 3);
+  assert.deepEqual(Object.keys(sample.questions[0]!.translations ?? {}), ['English', 'Hindi', 'Odia']);
+  assert.equal(sample.questions[2]!.translations?.Odia?.text, 'ସବୁଠାରୁ ବଡ଼ ଗ୍ରହ କେଉଁଟି?');
+  assert.equal(sample.questions[2]!.timeLimitMs, 30_000);
+
+  // Rows match by question_no, and blank correct/time/points copy the first tab.
+  const head = ['question_no', 'question', 'option_a', 'option_b', 'option_c', 'option_d', 'correct', 'time', 'points', 'explanation'];
+  const english = { name: 'English', rows: [head, ['1', 'Q1?', 'Yes', 'No', '', '', 'B', '30', '500', ''], ['2', 'Q2?', 'Up', 'Down', '', '', 'A', '', '', '']] };
+  const odia = { name: 'Odia', rows: [head, ['2', 'O2?', 'U', 'D', '', '', '', '', '', ''], [], ['1', 'O1?', 'Ha', 'Na', '', '', '', '', '', '']] };
+  const matched = csvToQuestions(sheetsCsv([english, odia]), id);
+  assert.deepEqual(matched.errors, []);
+  assert.deepEqual([matched.questions[0]!.translations?.Odia?.text, matched.questions[0]!.correct, matched.questions[0]!.points], ['O1?', [1], 500]);
+  assert.equal(matched.questions[1]!.translations?.Odia?.text, 'O2?');
+
+  // One tab is a single-language quiz.
+  assert.deepEqual(csvToQuestions(sheetsCsv([english]), id).errors, []);
+
+  // Errors name the tab and its row.
+  const hindi = { name: 'Hindi', rows: [head, ['1', 'H1?', 'Haan', 'Na', '', '', '', '', '', ''], ['3', 'H3?', 'Haan', '', '', '', 'B', '', '', '']] };
+  const bad = csvToQuestions(sheetsCsv([english, hindi]), id);
+  assert.equal(bad.questions.length, 0);
+  assert.ok(bad.errors.some((e) => e.row === 0 && /^Hindi sheet, row 3: .*option_a and option_b/.test(e.message)), JSON.stringify(bad.errors));
+  assert.ok(bad.errors.some((e) => /Question 2 is missing from the Hindi tab/.test(e.message)), JSON.stringify(bad.errors));
+  assert.deepEqual(languageSheetsToRows([english, { ...english, name: ' english ' }]), {
+    error: 'Two tabs are both called “english”. Give each language its own tab.',
+  });
+  assert.equal(isLanguageSheet([['question_id', 'language', 'question', 'option_a']]), false);
 });

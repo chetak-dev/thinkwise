@@ -16,7 +16,7 @@ export function getAccess(user: PublicUser | null) {
   return { canHost: canHost(user), siteAdmin: isSiteAdmin(user) };
 }
 
-/** For signed-in pages; accounts missing their name, phone or address complete those first. */
+/** For signed-in pages; accounts with an incomplete profile complete it first. */
 export async function requireUser(next = '/dashboard'): Promise<PublicUser> {
   const user = await getCurrentUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(next)}`);
@@ -31,10 +31,10 @@ export async function requireHost(next = '/dashboard'): Promise<PublicUser> {
   return user;
 }
 
-/** For host APIs: the signed-in account, but only if it may create and host quizzes. */
+/** For host APIs: a complete profile and permission to create and host quizzes. */
 export async function getHostUser(): Promise<PublicUser | null> {
   const user = await getCurrentUser();
-  return user && canHost(user) ? user : null;
+  return user && profileComplete(user) && canHost(user) ? user : null;
 }
 
 /** For pages only site admins may open. */
@@ -44,7 +44,7 @@ export async function requireSiteAdmin(next = '/dashboard'): Promise<PublicUser>
   return user;
 }
 
-/** For participant APIs: a signed-in account whose name, phone and address are filled in. */
+/** For participant APIs: a signed-in account with a complete profile. */
 export async function getParticipant(): Promise<
   { ok: true; user: PublicUser } | { ok: false; error: 'sign_in' | 'profile'; status: 401 | 403 }
 > {

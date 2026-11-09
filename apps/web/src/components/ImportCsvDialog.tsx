@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { Download, FileUp, Loader2 } from 'lucide-react';
-import { CSV_COLUMNS, CSV_MAX_BYTES, CSV_TEMPLATE, POINT_VALUES, TIME_LIMITS_S } from '@thinkwise/shared';
+import { CSV_COLUMNS, CSV_MAX_BYTES, POINT_VALUES, TIME_LIMITS_S } from '@thinkwise/shared';
 import { Modal } from '@/components/Modal';
 import { downloadQuestionTemplate, readQuestionWorkbook } from '@/lib/questionWorkbook';
 
@@ -10,8 +10,6 @@ export interface ImportOutcome {
   error?: string;
   errors?: { row: number; message: string }[];
 }
-
-const TEMPLATE_HREF = `data:text/csv;charset=utf-8,${encodeURIComponent(CSV_TEMPLATE)}`;
 
 export function ImportCsvDialog({
   open,
@@ -73,22 +71,19 @@ export function ImportCsvDialog({
             {busy ? <Loader2 className="size-5 animate-spin" aria-hidden="true" /> : <FileUp className="size-5" aria-hidden="true" />}
             Choose file
           </button>
-          <a
-            href={TEMPLATE_HREF}
-            download="thinkwise-template.csv"
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-nova-700 hover:underline dark:text-nova-300"
-          >
-            <Download className="size-4" aria-hidden="true" />
-            Download template
-          </a>
-          <button type="button" disabled={busy} className="text-sm font-semibold text-nova-700 hover:underline dark:text-nova-300"
+          <button
+            type="button"
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-nova-700 hover:underline disabled:opacity-60 dark:text-nova-300"
             onClick={async () => {
               setBusy(true);
               try { await downloadQuestionTemplate(); }
-              catch { setOutcome({ error: 'Could not create the Excel template. Please try again.' }); }
+              catch { setOutcome({ error: 'Could not create the sample Excel file. Please try again.' }); }
               finally { setBusy(false); }
-            }}>
-            Download multilingual Excel template
+            }}
+          >
+            <Download className="size-4" aria-hidden="true" />
+            Download sample Excel file
           </button>
           <input
             ref={input}
@@ -116,15 +111,30 @@ export function ImportCsvDialog({
           </div>
         )}
 
-        <p className="rounded-2xl bg-surface-2 p-3 text-sm text-muted">
-          Multilingual: use the Excel template. Repeat the same question_id for each language, with one translation per row.
-          Every question needs every offered language. Keep options in the same order and the correct letter, time and points identical.
-          This format imports multiple-choice questions. The first language is the host/editor view.
-          “time” is one of {TIME_LIMITS_S.join(', ')} seconds and “points” one of {POINT_VALUES.join(', ')} (blank means 20 s and 1000).
-          Participants choose their question language once, before starting. Maximum 100 questions, 20 languages, 256 KB.
-        </p>
+        <div className="space-y-2 rounded-2xl bg-surface-2 p-3 text-sm text-muted">
+          <p className="font-semibold text-app">How to fill in the sample Excel file</p>
+          <ul className="list-disc space-y-1 pl-5">
+            <li>
+              Use one tab per language and name each tab after its language, e.g. <strong>English</strong>, <strong>Hindi</strong>,{' '}
+              <strong>Odia</strong>. For one language, keep just one tab and delete the others.
+            </li>
+            <li>
+              Every tab has the same columns. Give each question the same <code>question_no</code> in every tab, with its options in the
+              same order.
+            </li>
+            <li>
+              <code>correct</code> is A, B, C or D. <code>time</code> is one of {TIME_LIMITS_S.join(', ')} seconds and{' '}
+              <code>points</code> one of {POINT_VALUES.join(', ')} (blank means 20 s and 1000). In the other tabs these can be left blank
+              to copy the first tab.
+            </li>
+            <li>
+              The first tab is what hosts see. Participants pick their language once, before starting. Maximum 100 questions, 20
+              languages, 256 KB.
+            </li>
+          </ul>
+        </div>
         <details className="rounded-2xl bg-surface-2 p-3 text-sm">
-          <summary className="cursor-pointer font-semibold">Format</summary>
+          <summary className="cursor-pointer font-semibold">Other question types (CSV)</summary>
           <p className="mt-2 text-muted">
             First row: <code className="break-words text-xs">{CSV_COLUMNS.join(', ')}</code>
           </p>

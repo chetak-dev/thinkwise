@@ -8,6 +8,7 @@ const { openDb } = await import('../src/client');
 const { migrateHandle } = await import('../src/migrate');
 const auth = await import('../src/auth');
 const admin = await import('../src/admin');
+const profile = await import('../src/profile');
 
 const handle = openDb();
 const db = handle.db;
@@ -29,12 +30,16 @@ test('only site admins grant hosting; site admins always host', async () => {
   assert.equal(admin.isSiteAdmin(site), true, 'email case does not matter');
   assert.equal(admin.canHost(site), true);
   assert.equal(admin.canHost(amit), false);
+  assert.ok((await profile.updateProfile(db, amit, {
+    name: 'Amit', phone: '9876543210', address: '12 Main Road, Bhubaneswar', gender: 'male',
+  })).ok);
 
   assert.equal((await admin.setUserCanHost(db, amit, neha.id, true)).ok, false, 'normal users cannot grant');
   assert.equal((await admin.setUserCanHost(db, site, site.id, false)).ok, false, 'site admins stay admins');
   assert.ok((await admin.setUserCanHost(db, site, amit.id, true)).ok);
   const found = await admin.listUsersForAdmin(db, 'amit', 10);
   assert.equal(found[0]?.canHost, true);
+  assert.equal(found[0]?.gender, 'male', 'site-admin list includes the saved choice');
   assert.equal((await admin.setUserCanHost(db, { ...amit, canHost: true }, neha.id, true)).ok, false, 'granted admins cannot grant');
   assert.equal((await admin.listUsersForAdmin(db, '%', 10)).length, 0, 'wildcards are taken literally');
 

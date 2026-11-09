@@ -2,18 +2,19 @@
 
 import { useActionState } from 'react';
 import { CheckCircle2, Loader2 } from 'lucide-react';
+import { GENDER_LABELS, GENDER_VALUES } from '@thinkwise/shared';
 import { profileAction, type ProfileFormState } from './actions';
 import { FieldError, INPUT, SUBMIT } from './AuthShell';
 
-type Field = 'name' | 'phone' | 'address';
+type Field = keyof NonNullable<ProfileFormState['values']>;
 
-/** Name, phone and address. With `next` set it continues there once saved; without, it stays and confirms. */
+/** With `next` set the form continues there once saved; otherwise it stays and confirms. */
 export function ProfileForm({
   initial,
   next,
   submitLabel,
 }: {
-  initial: { name: string; phone: string; address: string };
+  initial: NonNullable<ProfileFormState['values']>;
   next?: string;
   submitLabel: string;
 }) {
@@ -21,8 +22,9 @@ export function ProfileForm({
   const values = state?.values ?? initial;
   const err = (f: Field) => state?.fieldErrors?.[f];
 
+  // Keep entered values when a server action returns validation errors.
   return (
-    <form action={action} className="space-y-4" noValidate>
+    <form action={action} onReset={(event) => event.preventDefault()} className="space-y-4" noValidate>
       {next && <input type="hidden" name="next" value={next} />}
       <div className="space-y-1.5">
         <label htmlFor="name" className="block text-sm font-semibold text-app">
@@ -42,6 +44,26 @@ export function ProfileForm({
         <FieldError id="name-error" message={err('name')} />
       </div>
       <div className="space-y-1.5">
+        <label htmlFor="gender" className="block text-sm font-semibold text-app">
+          Gender
+        </label>
+        <select
+          id="gender"
+          name="gender"
+          required
+          defaultValue={values.gender}
+          aria-invalid={!!err('gender')}
+          aria-describedby={err('gender') ? 'gender-error' : undefined}
+          className={INPUT}
+        >
+          <option value="">Choose an option</option>
+          {GENDER_VALUES.map((gender) => (
+            <option key={gender} value={gender}>{GENDER_LABELS[gender]}</option>
+          ))}
+        </select>
+        <FieldError id="gender-error" message={err('gender')} />
+      </div>
+      <div className="space-y-1.5">
         <label htmlFor="phone" className="block text-sm font-semibold text-app">
           Phone number
         </label>
@@ -49,16 +71,31 @@ export function ProfileForm({
           id="phone"
           name="phone"
           type="tel"
-          inputMode="tel"
-          autoComplete="tel"
+          inputMode="numeric"
+          autoComplete="tel-national"
           required
-          maxLength={20}
-          placeholder="+91 98765 43210"
+          minLength={10}
+          pattern="[0-9]{10}"
+          placeholder="9876543210"
           defaultValue={values.phone}
+          onInput={(event) => {
+            const input = event.currentTarget;
+            const digits = input.value.replace(/\D/g, '').slice(0, 12);
+            // "+91 98765 43210" or "098765 43210", typed or pasted, becomes the 10-digit number.
+            const local = (digits.length === 12 && digits.startsWith('91')) || (digits.length === 11 && digits.startsWith('0'))
+              ? digits.slice(-10)
+              : digits;
+            if (input.value !== local) input.value = local;
+          }}
           aria-invalid={!!err('phone')}
-          aria-describedby={err('phone') ? 'phone-error' : undefined}
+          aria-describedby={err('phone') ? 'phone-error' : 'phone-hint'}
           className={INPUT}
         />
+        {!err('phone') && (
+          <p id="phone-hint" className="text-xs text-muted">
+            10 digits, without +91 or 0.
+          </p>
+        )}
         <FieldError id="phone-error" message={err('phone')} />
       </div>
       <div className="space-y-1.5">

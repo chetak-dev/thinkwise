@@ -17,6 +17,15 @@ import { answerStyle } from '@/components/game/answers';
 import type { Strings } from '@/lib/i18n';
 
 export type AnswerInput = { choice: number } | { choices: number[] } | { text: string } | { number: number } | { blanks: string[] };
+
+/** How a just-picked answer looks until the server confirms it. */
+export function previewAnswer(input: AnswerInput): PlayerAnswer {
+  if ('choice' in input) return { choices: [input.choice] };
+  if ('choices' in input) return { choices: input.choices };
+  if ('text' in input) return { choices: [], text: input.text };
+  if ('number' in input) return { choices: [], number: input.number };
+  return { choices: [], blanks: input.blanks };
+}
 export const SUBMIT_CLASS =
   'flex h-14 w-full items-center justify-center rounded-2xl bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] text-lg font-bold text-white shadow-lift transition hover:brightness-110 disabled:opacity-50';
 const FIELD_CLASS =
@@ -311,7 +320,7 @@ export function AnswerButtons({
   return (
     <div className="space-y-4">
       {multi && <p className="text-center text-sm font-semibold text-muted">{question.type === 'poll' ? t.pickAny : t.pickAll}</p>}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3">
         {question.options.map((_, i) => {
           const style = answerStyle(i);
           const on = picked.includes(i);
@@ -322,7 +331,7 @@ export function AnswerButtons({
               disabled={disabled}
               aria-pressed={multi ? on : undefined}
               onClick={() => (multi ? toggle(i) : onSubmit({ choice: i }))}
-              className={`group relative flex min-h-24 w-full items-center gap-2 rounded-2xl px-3 py-3 text-left font-bold text-white shadow-[0_6px_0_0_rgb(0_0_0/0.18)] transition-all active:translate-y-[3px] active:shadow-[0_3px_0_0_rgb(0_0_0/0.18)] disabled:cursor-default sm:gap-3 sm:px-4 ${style.bg} ${
+              className={`group relative flex min-h-16 w-full touch-manipulation items-center gap-3 rounded-2xl px-4 py-3 text-left font-bold text-white shadow-[0_6px_0_0_rgb(0_0_0/0.18)] transition-all active:translate-y-[3px] active:shadow-[0_3px_0_0_rgb(0_0_0/0.18)] disabled:cursor-default sm:gap-3 sm:px-4 ${style.bg} ${
                 on ? 'ring-4 ring-white/80 ring-offset-2 ring-offset-[var(--bg)]' : ''
               }`}
             >
@@ -433,7 +442,7 @@ export function AnswerSummary({
   // Polls and quizzes that hide answers send no right options; then the player's own picks get the tick.
   const right = correct?.length ? correct : null;
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid gap-2">
       {question.options.map((_, i) => {
         const style = answerStyle(i);
         const isPick = picks.includes(i);

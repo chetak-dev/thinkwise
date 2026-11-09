@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { GENDER_VALUES } from '@thinkwise/shared';
 
 export const organisations = pgTable('organisations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -23,9 +24,10 @@ export const users = pgTable('users', {
   canHost: boolean('can_host').notNull().default(false),
   orgId: uuid('org_id').references(() => organisations.id, { onDelete: 'set null' }),
   locale: text('locale').notNull().default('en'),
-  /** Contact details asked for once after sign-in; only the person and site admins see them. */
+  /** Profile details asked for after sign-in; only the person and site admins see them. */
   phone: text('phone'),
   address: text('address'),
+  gender: text('gender', { enum: GENDER_VALUES }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -11,7 +11,7 @@ import { PageLoader } from '@/components/PageLoader';
 import { Confetti } from '@/components/game/Confetti';
 import { QuestionImage } from '@/components/game/QuestionImage';
 import { QuestionText } from '@/components/game/QuestionText';
-import { AnswerButtons, AnswerSummary, SUBMIT_CLASS, type AnswerInput } from '@/components/play/AnswerInputs';
+import { AnswerButtons, AnswerSummary, previewAnswer, SUBMIT_CLASS, type AnswerInput } from '@/components/play/AnswerInputs';
 import { usePrefs, type Lang } from '@/lib/prefs';
 import { LANGUAGES, STRINGS, type Strings } from '@/lib/i18n';
 import { setSoundEnabled, useAudioPlaying, useSound } from '@/lib/audio';
@@ -166,7 +166,8 @@ function SelfFlow() {
       if (!tok || submitting.current) return;
       submitting.current = true;
       setBusy(true);
-      await post({ action: 'submit', token: tok });
+      await saveQueue.current;
+      await post({ action: 'submit', token: tok, pin });
       if (auto) setTimedOut(true);
       setConfirming(false);
       await refresh();
@@ -186,7 +187,7 @@ function SelfFlow() {
     const tok = token();
     if (step !== 'quiz' || !tok || opened.current.has(index)) return;
     opened.current.add(index);
-    void post({ action: 'open', token: tok, index });
+    void post({ action: 'open', token: tok, pin, index });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, index]);
 
@@ -197,7 +198,7 @@ function SelfFlow() {
       const tok = localStorage.getItem(tokenKey(pin));
       if (document.visibilityState !== 'hidden' || !tok || submitting.current) return;
       const body = JSON.stringify({ action: 'away', token: tok });
-      if (!navigator.sendBeacon?.('/api/self', new Blob([body], { type: 'application/json' }))) void post({ action: 'away', token: tok });
+      if (!navigator.sendBeacon?.('/api/self', new Blob([body], { type: 'application/json' }))) void post({ action: 'away', token: tok, pin });
     };
     document.addEventListener('visibilitychange', onHide);
     return () => document.removeEventListener('visibilitychange', onHide);
@@ -257,28 +258,54 @@ function SelfFlow() {
     setBusy(false);
   };
 
-  const save = async (input: AnswerInput | null) => {
+  // Answers show at once; saves go to the server one after another in the background.
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const saveSeq = useRef(new Map<number, number>());
+
+  const setAnswer = (at: number, answer: PlayerAnswer | null) =>
+    setState((s) => {
+      if (!s) return s;
+      const answers = { ...s.answers };
+      if (answer) answers[at] = answer;
+      else delete answers[at];
+      return { ...s, answers };
+    });
+
+  const save = (input: AnswerInput | null) => {
     const tok = token();
     if (!tok || !state || busy) return;
-    setBusy(true);
     setError(null);
-    const { status } = await post({ action: 'save', token: tok, index, answer: input });
-    if (status === 200) {
-      await refresh();
+    const at = index;
+    const previous = state.answers[at] ?? null;
+    const seq = (saveSeq.current.get(at) ?? 0) + 1;
+    saveSeq.current.set(at, seq);
+    setAnswer(at, input ? previewAnswer(input) : null);
+    if (input) {
+      // Go on to the next question still to answer, or to the review once every one has an answer.
       const total = state.questions.length;
-      if (input) {
-        // Go on to the next question still to answer, or to the review once every one has an answer.
-        const answered = new Set(Object.keys(state.answers).map(Number)).add(index);
-        const nextOpen = [...Array(total).keys()].map((k) => (index + 1 + k) % total).find((k) => !answered.has(k));
-        if (nextOpen === undefined) setStep('review');
-        else setIndex(nextOpen);
-      }
-    } else if (status === 409) {
-      await refresh();
-    } else {
-      setError(t.saveFailed);
+      const answered = new Set(Object.keys(state.answers).map(Number)).add(at);
+      const nextOpen = [...Array(total).keys()].map((k) => (at + 1 + k) % total).find((k) => !answered.has(k));
+      if (nextOpen === undefined) setStep('review');
+      else setIndex(nextOpen);
     }
-    setBusy(false);
+    saveQueue.current = saveQueue.current.then(async () => {
+      const { status, data } = await post<{ answer?: PlayerAnswer | null }>({ action: 'save', token: tok, pin, index: at, answer: input });
+      const latest = saveSeq.current.get(at) === seq;
+      if (status === 200) {
+        if (latest && data && 'answer' in data) setAnswer(at, data.answer ?? null);
+        return;
+      }
+      if (status === 409) {
+        await refresh();
+        return;
+      }
+      if (latest) {
+        setAnswer(at, previous);
+        setIndex(at);
+        setStep((s) => (s === 'review' ? 'quiz' : s));
+        setError(t.saveFailed);
+      }
+    });
   };
 
   const questions = state?.questions ?? [];
@@ -454,12 +481,6 @@ function SelfFlow() {
                     {busy && <Loader2 className="mr-2 size-5 animate-spin" aria-hidden="true" />}
                     {info.mine ? t.resumeAttempt : t.selfStart}
                   </button>
-                  <p className="text-center text-[11px] text-muted">
-                    {t.privacyNote}{' '}
-                    <Link href="/privacy" className="font-semibold underline hover:text-app">
-                      {t.privacyLink}
-                    </Link>
-                  </p>
                 </form>
               ) : (
                 <p role="status" className="rounded-2xl bg-sun-500/15 px-4 py-3 text-center font-semibold text-amber-900 dark:text-amber-100">
@@ -575,12 +596,12 @@ function SelfFlow() {
               </p>
             )}
 
-            <div className="mt-auto grid grid-cols-3 gap-2 pt-2">
+            <div className="mt-auto grid grid-cols-[1fr_1.35fr_1fr] gap-2 pt-2 text-sm leading-tight sm:text-base">
               <button
                 type="button"
                 onClick={() => setIndex((i) => Math.max(0, i - 1))}
                 disabled={index === 0}
-                className="flex h-12 items-center justify-center gap-1 rounded-2xl bg-surface font-bold shadow-soft disabled:opacity-40"
+                className="flex h-12 min-w-0 items-center justify-center gap-1 rounded-2xl bg-surface px-2 text-center font-bold shadow-soft disabled:opacity-40"
               >
                 <ArrowLeft className="size-4" aria-hidden="true" />
                 {t.previous}
@@ -588,15 +609,15 @@ function SelfFlow() {
               <button
                 type="button"
                 onClick={() => setStep('review')}
-                className="flex h-12 items-center justify-center gap-1 rounded-2xl bg-ink-900 font-bold text-white dark:bg-white dark:text-ink-900"
+                className="flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-2xl bg-ink-900 px-2 text-center font-bold text-white dark:bg-white dark:text-ink-900"
               >
-                <ListChecks className="size-4" aria-hidden="true" />
+                <ListChecks className="size-4 shrink-0" aria-hidden="true" />
                 {t.reviewAnswers}
               </button>
               <button
                 type="button"
                 onClick={() => (index === questions.length - 1 ? setStep('review') : setIndex(index + 1))}
-                className="flex h-12 items-center justify-center gap-1 rounded-2xl bg-surface font-bold shadow-soft"
+                className="flex h-12 min-w-0 items-center justify-center gap-1 rounded-2xl bg-surface px-2 text-center font-bold shadow-soft"
               >
                 {t.next}
                 <ArrowRight className="size-4" aria-hidden="true" />

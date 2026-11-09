@@ -28,13 +28,13 @@ const PHASE_LABELS: Record<LivePhase, string> = {
 
 function StatCard({ label, value, hint, Icon }: { label: string; value: number; hint: string; Icon: typeof Library }) {
   return (
-    <div className="rounded-2xl border border-app bg-surface p-5 shadow-soft">
-      <div className="flex items-center justify-between text-sm font-medium text-muted">
+    <div className="rounded-2xl border border-app bg-surface p-3 shadow-soft sm:p-5">
+      <div className="flex items-start justify-between gap-1 text-xs font-medium leading-tight text-muted sm:items-center sm:text-sm">
         <span>{label}</span>
-        <Icon className="size-4" aria-hidden="true" />
+        <Icon className="hidden size-4 shrink-0 sm:block" aria-hidden="true" />
       </div>
-      <div className="mt-2 font-display text-3xl font-bold tracking-tight">{value}</div>
-      <div className="mt-1 text-xs text-muted">{hint}</div>
+      <div className="mt-1.5 font-display text-2xl font-bold tracking-tight sm:mt-2 sm:text-3xl">{value}</div>
+      <div className="mt-1 hidden text-xs text-muted sm:block">{hint}</div>
     </div>
   );
 }
@@ -138,7 +138,7 @@ export default async function DashboardPage() {
         </section>
       )}
 
-      <section aria-label="At a glance" className="grid gap-4 sm:grid-cols-3">
+      <section aria-label="At a glance" className="grid grid-cols-3 gap-2 sm:gap-4">
         <StatCard label="Quizzes" value={stats.quizzes} hint="In your library" Icon={Library} />
         <StatCard label="Recent sessions" value={stats.sessions.length} hint={`Last ${RECENT_SESSIONS} counted`} Icon={BarChart3} />
         <StatCard label="Participants reached" value={stats.participants} hint="Across recent sessions" Icon={Users} />

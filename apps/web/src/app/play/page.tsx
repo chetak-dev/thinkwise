@@ -47,7 +47,7 @@ import { usePrefs, type Lang } from '@/lib/prefs';
 import { LANGUAGES, STRINGS, type Strings } from '@/lib/i18n';
 import { playSfx, setSoundEnabled, useAudioPlaying, useSound } from '@/lib/audio';
 import { EventFeedbackForm, type PlayEventForm } from '@/components/play/EventFeedbackForm';
-import { AnswerButtons, AnswerSummary, SUBMIT_CLASS, type AnswerInput } from '@/components/play/AnswerInputs';
+import { AnswerButtons, AnswerSummary, previewAnswer, SUBMIT_CLASS, type AnswerInput } from '@/components/play/AnswerInputs';
 
 type Step = 'pin' | 'checking' | 'profile' | 'feedback' | 'lobby' | 'question' | 'result' | 'leaderboard' | 'final' | 'kicked';
 
@@ -466,7 +466,6 @@ function PlayFlow() {
         case 'answer:ok':
           setMyAnswer(msg.answer);
           setPending(false);
-          playSfx('lock');
           break;
         case 'result':
           if (step !== 'result') playSfx(msg.isCorrect ? 'correct' : 'wrong');
@@ -506,6 +505,7 @@ function PlayFlow() {
             setError(msg.message);
           } else {
             // Mid-game errors (e.g. rate limiting) must not throw the player out of the game.
+            if (pending) setMyAnswer(null);
             setPending(false);
           }
           break;
@@ -615,7 +615,10 @@ function PlayFlow() {
 
   const submitAnswer = (answer: AnswerInput) => {
     if (!question || pending || myAnswer !== null) return;
+    // Show the pick straight away; the server's confirmation replaces it.
     setPending(true);
+    setMyAnswer(previewAnswer(answer));
+    playSfx('lock');
     send({ t: 'player:answer', index: question.index, ...answer });
   };
 
@@ -787,12 +790,6 @@ function PlayFlow() {
               >
                 {t.joinButton}
               </button>
-              <p className="text-center text-[11px] text-muted">
-                {t.privacyNote}{' '}
-                <Link href="/privacy" className="font-semibold underline hover:text-app">
-                  {t.privacyLink}
-                </Link>
-              </p>
             </form>
           </div>
         )}

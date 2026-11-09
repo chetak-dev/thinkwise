@@ -1,6 +1,6 @@
 import { desc, eq, ilike, or, sql } from 'drizzle-orm';
 import type { Db } from './client';
-import { auditLog, users } from './schema';
+import { auditLog, users, type User } from './schema';
 import type { PublicUser } from './auth';
 
 /** Site admins are fixed here; only they can make or remove other admins. */
@@ -21,6 +21,7 @@ export interface AdminUserRow {
   email: string;
   phone: string | null;
   address: string | null;
+  gender: User['gender'];
   canHost: boolean;
   siteAdmin: boolean;
   createdAt: number;
@@ -36,6 +37,7 @@ export async function listUsersForAdmin(db: Db, search = '', limit = 200): Promi
       email: users.email,
       phone: users.phone,
       address: users.address,
+      gender: users.gender,
       canHost: users.canHost,
       createdAt: users.createdAt,
     })

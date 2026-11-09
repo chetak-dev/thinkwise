@@ -35,9 +35,9 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           <h1 className="font-display text-3xl font-bold">Library</h1>
           <p className="text-muted">Everything you’ve written, saved and tucked away.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
           <LibraryImportButton />
-          <NewQuizButton />
+          <NewQuizButton className="w-full px-3 sm:w-auto sm:px-5" />
         </div>
       </div>
 

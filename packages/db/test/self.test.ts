@@ -1,6 +1,7 @@
 import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PlayableQuiz } from '@thinkwise/shared';
+import { eq } from 'drizzle-orm';
+import { GENDER_VALUES, PlayableQuiz } from '@thinkwise/shared';
 
 process.env.PGLITE_DIR = 'memory://';
 delete process.env.DATABASE_URL;
@@ -13,6 +14,7 @@ const self = await import('../src/selfSessions');
 const logic = await import('../src/selfPaced');
 const part = await import('../src/participation');
 const profile = await import('../src/profile');
+const { users } = await import('../src/schema');
 
 const handle = openDb();
 const db = handle.db;
@@ -277,19 +279,45 @@ test('a signed-in participant gets one attempt in one language; joining again re
   assert.deepEqual(await part.participantHistory(db, host.id), [], 'only their own attempts');
 });
 
-test('participants complete their profile once: name, phone and address', async () => {
+test('participants must choose a valid gender to complete or update their profile', async () => {
   const r = await auth.registerUser(db, { name: 'Gita', email: 'gita@example.com', password: 'gita-pass-1' });
   assert.ok(r.ok);
   assert.equal(profile.profileComplete(r.user), false);
   const bad = await profile.updateProfile(db, r.user, { name: ' ', phone: '12', address: 'short' });
   assert.equal(bad.ok, false);
-  if (!bad.ok) assert.deepEqual(Object.keys(bad.fieldErrors).sort(), ['address', 'name', 'phone']);
-  assert.equal((await profile.updateProfile(db, r.user, { name: 'Gita', phone: 'call me', address: '12 Main Road, Bhubaneswar' })).ok, false);
-  assert.ok((await profile.updateProfile(db, r.user, { name: ' Gita Das ', phone: '+91 98765-43210', address: ' 12 Main Road, Bhubaneswar ' })).ok);
+  if (!bad.ok) assert.deepEqual(Object.keys(bad.fieldErrors).sort(), ['address', 'gender', 'name', 'phone']);
+  const details = { name: 'Gita', phone: '9876543210', address: '12 Main Road, Bhubaneswar' };
+  assert.equal((await profile.updateProfile(db, r.user, { ...details, gender: '' })).ok, false);
+  assert.equal((await profile.updateProfile(db, r.user, { ...details, gender: 'invalid' })).ok, false);
+  assert.equal((await profile.updateProfile(db, r.user, { ...details, phone: 'call me', gender: 'female' })).ok, false);
+  for (const phone of ['+91 9876543210', '98765 43210', '987654321', '98765432101', '987654321a']) {
+    assert.equal((await profile.updateProfile(db, r.user, { ...details, phone, gender: 'female' })).ok, false, phone);
+  }
+  assert.equal(profile.phoneForForm('+91 98765 43210'), '9876543210');
+  assert.equal(profile.phoneForForm(null), '');
+  for (const gender of GENDER_VALUES) assert.ok(profile.ProfileInput.safeParse({ ...details, gender }).success, gender);
+
+  // An existing profile keeps its details but needs a gender choice after migration.
+  await db.update(users).set({ phone: details.phone, address: details.address }).where(eq(users.id, r.user.id));
+  const legacy = await auth.authenticate(db, 'gita@example.com', 'gita-pass-1');
+  assert.ok(legacy);
+  assert.deepEqual([legacy.name, legacy.phone, legacy.address, legacy.gender], [details.name, details.phone, details.address, null]);
+  assert.equal(profile.profileComplete(legacy), false);
+
+  assert.ok((await profile.updateProfile(db, legacy, {
+    name: ' Gita Das ', phone: ` ${details.phone} `, address: ` ${details.address} `, gender: 'prefer_not_to_say',
+  })).ok);
   const signedIn = await auth.authenticate(db, 'gita@example.com', 'gita-pass-1');
   assert.ok(signedIn);
-  if (signedIn) {
-    assert.equal(profile.profileComplete(signedIn), true);
-    assert.deepEqual([signedIn.name, signedIn.phone, signedIn.address], ['Gita Das', '+91 98765-43210', '12 Main Road, Bhubaneswar']);
-  }
+  assert.equal(profile.profileComplete(signedIn), true, 'prefer not to say completes the profile');
+  assert.deepEqual([signedIn.name, signedIn.phone, signedIn.address, signedIn.gender],
+    ['Gita Das', details.phone, details.address, 'prefer_not_to_say']);
+
+  const { token } = await auth.createSession(db, signedIn.id);
+  assert.equal((await auth.getSessionUser(db, token))?.gender, 'prefer_not_to_say');
+  const google = await auth.signInWithGoogle(db, { sub: 'google-gita', email: 'gita@example.com', emailVerified: true, name: 'Gita' });
+  assert.equal(google?.gender, 'prefer_not_to_say', 'linking Google keeps the profile');
+
+  assert.ok((await profile.updateProfile(db, signedIn, { ...details, gender: 'non_binary' })).ok);
+  assert.equal((await auth.getSessionUser(db, token))?.gender, 'non_binary', 'an updated choice is saved');
 });
