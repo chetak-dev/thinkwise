@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   BarChart3,
   Building2,
+  History,
   House,
   Library,
   LogOut,
@@ -14,6 +15,7 @@ import {
   Plus,
   ShieldCheck,
   SlidersHorizontal,
+  UserRound,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -37,6 +39,8 @@ const NAV: NavItem[] = [
   { href: '/library', label: 'Library', Icon: Library, ready: true },
   { href: '/feedback', label: 'Feedback + Quiz', Icon: MessageSquareHeart, ready: true },
   { href: '/reports', label: 'Reports', Icon: BarChart3, ready: true },
+  { href: '/history', label: 'My quiz history', Icon: History, ready: true },
+  { href: '/profile', label: 'My profile', Icon: UserRound, ready: true },
   { href: '/org', label: 'Organisation', Icon: Building2, ready: false },
 ];
 
@@ -102,6 +106,7 @@ function SidebarContent({
             (href === '/admin' && pathname.startsWith('/admin/')) ||
             (href === '/library' && pathname.startsWith('/quiz/')) ||
             (href === '/reports' && pathname.startsWith('/reports/')) ||
+            (href === '/history' && pathname.startsWith('/history/')) ||
             (href === '/feedback' && pathname.startsWith('/feedback/'));
           if (!ready) {
             return (

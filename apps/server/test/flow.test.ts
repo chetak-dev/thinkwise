@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { createHmac, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
-import type { ClientMessage, GameResults, ServerMessage } from '@thinkwise/shared';
+import { SAMPLE_QUIZ, type ClientMessage, type GameResults, type ParticipantTicket, type ServerMessage } from '@thinkwise/shared';
 
 const PORT = 4555;
 const RESULTS_PORT = 4556;
@@ -102,20 +103,58 @@ class Client {
   }
 }
 
-async function host() {
+const SECRET = 'dev-only-realtime-secret';
+const BEARER = { authorization: ['Bearer', SECRET].join(' ') };
+
+/** Creates a game the way the web app does (HTTP), returning what it hands the host. */
+async function createViaHttp(quiz: unknown = SAMPLE_QUIZ, settings?: unknown) {
+  const res = await fetch(`http://127.0.0.1:${PORT}/games`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...BEARER },
+    body: JSON.stringify({ quiz, settings }),
+  });
+  assert.equal(res.status, 201);
+  return (await res.json()) as { gameId: string; pin: string; hostToken: string };
+}
+
+async function host(quiz: unknown = SAMPLE_QUIZ) {
+  const created = await createViaHttp(quiz);
   const c = new Client();
   await c.open();
-  c.send({ t: 'host:create' });
+  c.send({ t: 'host:resume', gameId: created.gameId, hostToken: created.hostToken });
   const ready = await c.next('host:ready');
   return { c, ready };
 }
 
-async function player(pin: string, nickname: string) {
+/** Signs what the web app's /api/play/access would, after checking the account. */
+function signTicket(fields: Partial<ParticipantTicket> & { gameId: string; nickname: string }) {
+  const ticket: ParticipantTicket = {
+    attemptId: randomUUID(), userId: randomUUID(), avatar: '🦊', language: '', expiresAt: Date.now() + 120_000, ...fields,
+  };
+  const payload = Buffer.from(JSON.stringify(ticket)).toString('base64url');
+  return { ticket, signed: `${payload}.${createHmac('sha256', SECRET).update(payload).digest('base64url')}` };
+}
+
+async function gameIdFor(pin: string) {
+  const res = await fetch(`http://127.0.0.1:${PORT}/games/info?pin=${pin}`, { headers: BEARER });
+  return ((await res.json()) as { gameId: string }).gameId;
+}
+
+async function player(pin: string, nickname: string, fields: Partial<ParticipantTicket> = {}) {
+  const { ticket, signed } = signTicket({ gameId: await gameIdFor(pin), nickname, ...fields });
   const c = new Client();
   await c.open();
-  c.send({ t: 'player:join', pin, nickname, avatar: '🦊' });
+  c.send({ t: 'player:join', pin, ticket: signed });
   const ready = await c.next('player:ready');
-  return { c, ready };
+  return { c, ready, ticket };
+}
+
+/** A dropped phone coming back: the same account and attempt get a fresh ticket. */
+async function rejoin(pin: string, p: { ticket: ParticipantTicket }) {
+  const c = new Client();
+  await c.open();
+  c.send({ t: 'player:join', pin, ticket: signTicket(p.ticket).signed });
+  return c;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -260,12 +299,10 @@ test('reconnect mid-question keeps score and answered state; host resume restore
   a.c.send({ t: 'player:answer', index: 0, choice: 1 });
   await a.c.next('answer:ok', mark);
 
-  // Dev's phone drops and reconnects with the token.
+  // Dev's phone drops and reconnects: the same account's attempt is re-attached.
   a.c.close();
   await sleep(200);
-  const again = new Client();
-  await again.open();
-  again.send({ t: 'player:resume', pin: ready.pin, playerToken: a.ready.playerToken });
+  const again = await rejoin(ready.pin, a);
   const readyAgain = await again.next('player:ready');
   assert.equal(readyAgain.nickname, 'Dev');
   const q = await again.next('question');
@@ -482,9 +519,7 @@ test('POST /games: secret required, quiz validated, game playable without leakin
   late.send({ t: 'pin:check', pin: closed.pin });
   const refused = await late.next('error');
   assert.equal(refused.code, 'game_started', 'latecomers are turned away once it starts');
-  const back = new Client();
-  await back.open();
-  back.send({ t: 'player:resume', pin: closed.pin, playerToken: beforeStart.ready.playerToken });
+  const back = await rejoin(closed.pin, beforeStart);
   assert.equal((await back.next('player:ready')).nickname, 'Second', 'players who joined in time can reconnect');
 
   for (const x of [h, h2, h3, h4, h5, p.c, early.c, beforeStart.c, late, back]) x.close();
@@ -726,14 +761,7 @@ test('quiz rules: accuracy scoring, no streak bonus, hidden answers and leaderbo
   for (const x of [h, p.c]) x.close();
 });
 
-test('saved-quiz games report results once when they end; the sample quiz never reports', async () => {
-  const sample = await host();
-  const sp = await player(sample.ready.pin, 'Sam');
-  sample.c.send({ t: 'host:start' });
-  await sp.c.next('question');
-  sample.c.send({ t: 'host:end' });
-  await sp.c.next('final');
-
+test('saved-quiz games report results once when they end', async () => {
   const quiz = {
     title: 'Reported',
     questions: [
@@ -775,7 +803,6 @@ test('saved-quiz games report results once when they end; the sample quiz never 
   await sleep(300);
   const mine = reports.filter((r) => r.body.gameId === created.gameId);
   assert.equal(mine.length, 1, 'reported exactly once');
-  assert.ok(!reports.some((r) => r.body.questions.some((q) => q.text.includes('Red Planet'))), 'sample quiz not reported');
   const report = mine[0]!;
   assert.equal(report.auth, 'Bearer dev-only-realtime-secret');
   assert.equal(report.body.status, 'ended');
@@ -790,7 +817,7 @@ test('saved-quiz games report results once when they end; the sample quiz never 
   assert.equal(bo.answers.length, 1, 'unanswered questions are simply absent');
   assert.equal(bo.answers[0]?.isCorrect, false);
 
-  for (const x of [sample.c, sp.c, h, a.c, b.c]) x.close();
+  for (const x of [h, a.c, b.c]) x.close();
 });
 
 test('numeric answers allow the margin; blanks give partial credit unless it is switched off', async () => {
@@ -1148,9 +1175,7 @@ test('self-paced: each player moves on alone with instant results; the host sees
   b.c.send({ t: 'player:answer', index: 0, choice: 1 });
   const rb = await b.c.next('result', markB2);
   assert.deepEqual([rb.isCorrect, rb.points], [false, 0]);
-  const b2 = new Client();
-  await b2.open();
-  b2.send({ t: 'player:resume', pin: created.pin, playerToken: b.ready.playerToken });
+  const b2 = await rejoin(created.pin, b);
   const resumed = await b2.next('result');
   assert.equal(resumed.index, 0, 'back on the result they were looking at');
 
@@ -1175,7 +1200,8 @@ test('a host connection can open a fresh lobby and stops hearing the old game', 
   const { c: h, ready: first } = await host();
   const a = await player(first.pin, 'Kiran');
   let mark = h.mark();
-  h.send({ t: 'host:create' });
+  const fresh = await createViaHttp();
+  h.send({ t: 'host:resume', gameId: fresh.gameId, hostToken: fresh.hostToken });
   const second = await h.next('host:ready', mark);
   assert.notEqual(second.gameId, first.gameId);
   assert.notEqual(second.pin, first.pin);
@@ -1192,6 +1218,67 @@ test('a host connection can open a fresh lobby and stops hearing the old game', 
   assert.equal(back.gameId, first.gameId);
 
   for (const x of [h, a.c, b.c]) x.close();
+});
+
+test('players need a signed ticket; one attempt per account; each sees their own language', async () => {
+  const quiz = {
+    title: 'Two languages',
+    questions: [{
+      type: 'mc', text: 'Two plus two?', options: ['3', '4'], correct: [1], timeLimitMs: 10_000, points: 1000,
+      translations: {
+        English: { text: 'Two plus two?', options: ['3', '4'] },
+        Hindi: { text: 'दो और दो?', options: ['तीन', 'चार'] },
+      },
+    }],
+  };
+  const { c: h, ready } = await host(quiz);
+  const info = await fetch(`http://127.0.0.1:${PORT}/games/info?pin=${ready.pin}`);
+  assert.equal(info.status, 401, 'game info needs the shared secret');
+  const known = (await (await fetch(`http://127.0.0.1:${PORT}/games/info?pin=${ready.pin}`, { headers: BEARER })).json()) as {
+    gameId: string; languages: string[];
+  };
+  assert.deepEqual(known.languages, ['English', 'Hindi']);
+
+  const refuse = async (signed: string) => {
+    const c = new Client();
+    await c.open();
+    c.send({ t: 'player:join', pin: ready.pin, ticket: signed });
+    const err = await c.next('error');
+    c.close();
+    return err;
+  };
+  const forged = signTicket({ gameId: known.gameId, nickname: 'Forged', language: 'Hindi' }).signed;
+  assert.equal((await refuse(`${forged.split('.')[0]}.${'x'.repeat(43)}`)).code, 'not_authorized', 'bad signature');
+  assert.equal((await refuse(signTicket({ gameId: known.gameId, nickname: 'Old', language: 'Hindi', expiresAt: Date.now() - 1 }).signed)).code, 'not_authorized', 'expired');
+  assert.equal((await refuse(signTicket({ gameId: randomUUID(), nickname: 'Elsewhere', language: 'Hindi' }).signed)).code, 'not_authorized', 'another game');
+  assert.equal((await refuse(signTicket({ gameId: known.gameId, nickname: 'Nolang' }).signed)).code, 'bad_request', 'language required');
+
+  const hi = await player(ready.pin, 'Meera', { language: 'Hindi' });
+  const en = await player(ready.pin, 'Tom', { language: 'English' });
+  // The same account trying a second attempt (e.g. in English) is turned away.
+  const again = signTicket({ gameId: known.gameId, nickname: 'Meera 2', language: 'English', userId: hi.ticket.userId }).signed;
+  assert.equal((await refuse(again)).code, 'not_authorized');
+
+  let mark = hi.c.mark();
+  const markEn = en.c.mark();
+  h.send({ t: 'host:start' });
+  const qHi = await hi.c.next('question', mark);
+  const qEn = await en.c.next('question', markEn);
+  assert.deepEqual([qHi.question.text, qHi.question.options], ['दो और दो?', ['तीन', 'चार']]);
+  assert.deepEqual([qEn.question.text, qEn.question.options], ['Two plus two?', ['3', '4']]);
+  mark = hi.c.mark();
+  hi.c.send({ t: 'player:answer', index: 0, choice: 1 });
+  en.c.send({ t: 'player:answer', index: 0, choice: 0 });
+  assert.equal((await hi.c.next('result', mark)).isCorrect, true, 'scored against the shared answer key');
+
+  // Kicked players can't come back into this game, even with a fresh ticket.
+  h.send({ t: 'host:kick', playerId: en.ready.playerId });
+  await en.c.next('kicked');
+  await sleep(100);
+  const back = await rejoin(ready.pin, en);
+  assert.equal((await back.next('error')).code, 'not_authorized');
+
+  for (const x of [h, hi.c, en.c, back]) x.close();
 });
 
 // Keep last: it deliberately uses up 127.0.0.1's wrong-PIN allowance.

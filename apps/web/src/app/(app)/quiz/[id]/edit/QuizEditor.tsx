@@ -670,6 +670,13 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
 
         <section aria-label={`Question ${index + 1}`} className="flex-1 overflow-y-auto bg-app px-4 py-6 sm:px-8">
           <div className="mx-auto max-w-3xl space-y-4">
+            {current.translations && Object.keys(current.translations).length > 0 && (
+              <p role="note" className="rounded-2xl bg-nova-500/10 px-4 py-3 text-sm">
+                <span className="font-semibold">Languages: {Object.keys(current.translations).sort((a, b) => a.localeCompare(b)).join(', ')}.</span>{' '}
+                Players see the wording for the language they choose. Edits here change only this default view; to change any
+                language’s wording, re-import the updated Excel sheet.
+              </p>
+            )}
             <div className="rounded-3xl border border-app bg-surface p-5 shadow-soft">
               <label htmlFor="question-text" className="sr-only">
                 Question text

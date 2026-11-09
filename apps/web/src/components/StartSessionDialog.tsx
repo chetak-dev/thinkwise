@@ -105,7 +105,7 @@ export function StartSessionDialog({
       open={open}
       onClose={onClose}
       title="Start a session"
-      description="Players join from any phone with the PIN, QR code or link. They don’t need an account, and there’s no cap on numbers."
+      description="Players join from any phone with the PIN, QR code or link, signed in to their account. Each account can take a session once, and there’s no cap on numbers."
     >
       <div className="space-y-4">
         <div role="radiogroup" aria-label="Game mode" className="grid gap-3 sm:grid-cols-2">

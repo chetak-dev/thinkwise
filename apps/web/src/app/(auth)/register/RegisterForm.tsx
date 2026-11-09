@@ -8,13 +8,14 @@ import { FieldError, INPUT, SUBMIT } from '../AuthShell';
 
 type Field = 'name' | 'email' | 'password' | 'organisation';
 
-export function RegisterForm() {
+export function RegisterForm({ next = '/dashboard' }: { next?: string }) {
   const [state, action, pending] = useActionState<FormState | undefined, FormData>(registerAction, undefined);
   const err = (f: Field) => state?.fieldErrors?.[f];
   const describedBy = (f: Field, hint?: string) => [err(f) ? `${f}-error` : '', hint ?? ''].filter(Boolean).join(' ') || undefined;
 
   return (
     <form action={action} className="space-y-4" noValidate>
+      <input type="hidden" name="next" value={next} />
       <div className="space-y-1.5">
         <label htmlFor="name" className="block text-sm font-semibold text-app">
           Your name
@@ -100,7 +101,7 @@ export function RegisterForm() {
       </p>
       <p className="text-center text-sm text-muted">
         Already have an account?{' '}
-        <Link href="/login" className="font-semibold text-nova-600 hover:underline dark:text-nova-300">
+        <Link href={next === '/dashboard' ? '/login' : `/login?next=${encodeURIComponent(next)}`} className="font-semibold text-nova-600 hover:underline dark:text-nova-300">
           Sign in
         </Link>
       </p>

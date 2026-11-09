@@ -116,3 +116,48 @@ test('only the host can pick a running game back up, and only while it is runnin
   assert.deepEqual(await s.listRunningSessions(db, host.id), []);
   assert.equal(await s.getResumableSession(db, host.id, gameId), null, 'finished games are not resumable');
 });
+
+test('signed-in live players: one attempt per account, results and review in their own history', async () => {
+  const part = await import('../src/participation');
+  const { PlayableQuiz } = await import('@thinkwise/shared');
+  const quiz = PlayableQuiz.parse({
+    title: 'Live bilingual',
+    questions: [{
+      type: 'mc', text: 'One?', options: ['A', 'B'], correct: [1], timeLimitMs: 20_000, points: 1000,
+      translations: { English: { text: 'One?', options: ['A', 'B'] }, Odia: { text: 'ଏକ?', options: ['କ', 'ଖ'] } },
+    }],
+    rules: { showCorrect: true },
+  });
+  const gameId = randomUUID();
+  await s.createGameSession(db, host, { gameId, pin: '765432', quizId: null, title: 'Live bilingual', questionCount: 1, quiz });
+  const reg = await auth.registerUser(db, { name: 'Lina', email: 'lina@example.com', password: 'lina-pass-1' });
+  assert.ok(reg.ok);
+  const lina = reg.user;
+
+  const session = await part.participantSessionByPin(db, '765432', 'live');
+  assert.equal(session?.id, gameId);
+  assert.equal(await part.participantSessionByPin(db, '765432', 'self'), null);
+  const first = await part.startLiveAttempt(db, gameId, lina.id, { nickname: 'Lina', avatar: '🦊', language: 'Odia' });
+  const second = await part.startLiveAttempt(db, gameId, lina.id, { nickname: 'Other', avatar: '🐼', language: 'English' });
+  assert.equal(second?.id, first?.id, 'the same attempt, whatever language is asked for next');
+  assert.equal(second?.language, 'Odia');
+  const taken = await part.startLiveAttempt(db, gameId, other.id, { nickname: 'LINA', avatar: '🐼', language: 'English' });
+  assert.equal(taken, null, 'nicknames stay unique in a game');
+
+  let history = await part.participantHistory(db, lina.id);
+  assert.deepEqual([history[0]?.mode, history[0]?.status, history[0]?.score], ['live', 'In progress', null]);
+  assert.equal((await part.participantLiveResult(db, lina.id, gameId))?.review, null, 'no review while the game runs');
+
+  await s.recordResults(db, results(gameId, {
+    questionsAsked: 1,
+    questions: [{ type: 'mc', text: 'One?', options: ['A', 'B'], correct: [1], points: 1000, translations: quiz.questions[0]!.translations }],
+    players: [{ attemptId: first!.id, nickname: 'Lina', avatar: '🦊', score: 900, rank: 1, correctCount: 1,
+      answers: [{ q: 0, choice: 1, isCorrect: true, points: 900, timeMs: 2000 }] }],
+  }));
+  history = await part.participantHistory(db, lina.id);
+  assert.deepEqual([history[0]?.status, history[0]?.score, history[0]?.language], ['Completed', 900, 'Odia']);
+  const mine = await part.participantLiveResult(db, lina.id, gameId);
+  assert.equal(mine?.rank, 1);
+  assert.equal(mine?.review?.answers[0]?.isCorrect, true);
+  assert.equal(await part.participantLiveResult(db, other.id, gameId), null, 'only their own result');
+});

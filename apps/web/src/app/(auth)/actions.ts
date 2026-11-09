@@ -2,6 +2,7 @@
 
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import {
   RegisterInput,
   authenticate,
@@ -9,8 +10,9 @@ import {
   deleteSession,
   getDb,
   registerUser,
+  updateProfile,
 } from '@thinkwise/db';
-import { SESSION_COOKIE, clearSessionCookie, safeNext, setSessionCookie } from '@/lib/session';
+import { SESSION_COOKIE, afterSignIn, clearSessionCookie, getCurrentUser, safeNext, setSessionCookie } from '@/lib/session';
 
 export interface FormState {
   error?: string;
@@ -46,6 +48,7 @@ export async function registerAction(_prev: FormState | undefined, form: FormDat
     password: String(form.get('password') ?? ''),
     organisation: String(form.get('organisation') ?? ''),
   };
+  const next = safeNext(form.get('next'));
   const values = { name: raw.name, email: raw.email, organisation: raw.organisation };
   const parsed = RegisterInput.safeParse(raw);
   if (!parsed.success) {
@@ -66,7 +69,7 @@ export async function registerAction(_prev: FormState | undefined, form: FormDat
 
   const session = await createSession(db, result.user.id);
   await setSessionCookie(session.token, session.expiresAt);
-  redirect('/dashboard');
+  redirect(afterSignIn(result.user, next));
 }
 
 export async function loginAction(_prev: FormState | undefined, form: FormData): Promise<FormState> {
@@ -85,7 +88,34 @@ export async function loginAction(_prev: FormState | undefined, form: FormData):
 
   const session = await createSession(db, user.id);
   await setSessionCookie(session.token, session.expiresAt);
-  redirect(next);
+  redirect(afterSignIn(user, next));
+}
+
+export interface ProfileFormState {
+  error?: string;
+  saved?: boolean;
+  fieldErrors?: Partial<Record<'name' | 'phone' | 'address', string>>;
+  values?: { name: string; phone: string; address: string };
+}
+
+/** Saves the account's name, phone and address; `next` is where to go afterwards (empty to stay on the page). */
+export async function profileAction(_prev: ProfileFormState | undefined, form: FormData): Promise<ProfileFormState> {
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+  const values = {
+    name: String(form.get('name') ?? ''),
+    phone: String(form.get('phone') ?? ''),
+    address: String(form.get('address') ?? ''),
+  };
+  if (tooMany(await clientKey(`profile|${user.id}`))) {
+    return { error: 'Too many attempts. Please wait a few minutes and try again.', values };
+  }
+  const result = await updateProfile(getDb(), user, values);
+  if (!result.ok) return { fieldErrors: result.fieldErrors, values };
+  revalidatePath('/', 'layout');
+  const next = form.get('next');
+  if (next) redirect(safeNext(next));
+  return { saved: true, values };
 }
 
 export async function logoutAction() {

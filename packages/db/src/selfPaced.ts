@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { z } from 'zod';
 import {
+  reorderTranslations,
   ANSWER_TEXT_MAX,
   CLOUD_ANSWER_MAX,
   MAX_BLANKS,
@@ -196,6 +197,7 @@ export function arrangeQuiz(quiz: SelfQuiz): SelfQuiz {
   const questions = quiz.rules.shuffleQuestions ? shuffled(quiz.questions) : quiz.questions;
   const reorder = (q: Question, order: number[]) => ({
     ...q,
+    translations: reorderTranslations(q.translations, order),
     options: order.map((i) => q.options[i]!),
     correct: q.correct.map((c) => order.indexOf(c)),
   });

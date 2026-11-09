@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { Download, FileUp, Loader2 } from 'lucide-react';
 import { CSV_COLUMNS, CSV_MAX_BYTES, CSV_TEMPLATE } from '@thinkwise/shared';
 import { Modal } from '@/components/Modal';
+import { downloadQuestionTemplate, readQuestionWorkbook } from '@/lib/questionWorkbook';
 
 export interface ImportOutcome {
   error?: string;
@@ -36,10 +37,15 @@ export function ImportCsvDialog({
     }
     setBusy(true);
     try {
-      const result = await onFile(await file.text(), file.name);
+      const text = /\.xlsx$/i.test(file.name) ? await readQuestionWorkbook(file) : await file.text();
+      if (new TextEncoder().encode(text).length > CSV_MAX_BYTES) {
+        setOutcome({ error: 'The extracted questions exceed 256 KB. Please split this workbook.' });
+        return;
+      }
+      const result = await onFile(text, file.name);
       if (result) setOutcome(result);
-    } catch {
-      setOutcome({ error: 'Something went wrong reading that file. Please try again.' });
+    } catch (error) {
+      setOutcome({ error: error instanceof Error ? error.message : 'Could not read the file. Please try again.' });
     } finally {
       setBusy(false);
       if (input.current) input.current.value = '';
@@ -53,7 +59,7 @@ export function ImportCsvDialog({
         setOutcome(null);
         onClose();
       }}
-      title="Import questions from CSV"
+      title="Import questions from Excel or CSV"
       description={description}
     >
       <div className="space-y-4">
@@ -75,12 +81,21 @@ export function ImportCsvDialog({
             <Download className="size-4" aria-hidden="true" />
             Download template
           </a>
+          <button type="button" disabled={busy} className="text-sm font-semibold text-nova-700 hover:underline dark:text-nova-300"
+            onClick={async () => {
+              setBusy(true);
+              try { await downloadQuestionTemplate(); }
+              catch { setOutcome({ error: 'Could not create the Excel template. Please try again.' }); }
+              finally { setBusy(false); }
+            }}>
+            Download multilingual Excel template
+          </button>
           <input
             ref={input}
             type="file"
-            accept=".csv,text/csv,text/plain"
+            accept=".xlsx,.csv,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="hidden"
-            aria-label="CSV file"
+            aria-label="Excel or CSV file"
             onChange={(e) => void pick(e.target.files?.[0])}
           />
         </div>
@@ -101,6 +116,12 @@ export function ImportCsvDialog({
           </div>
         )}
 
+        <p className="rounded-2xl bg-surface-2 p-3 text-sm text-muted">
+          Multilingual: use the Excel template. Repeat the same question_id for each language, with one translation per row.
+          Every question needs every offered language. Keep options in the same order and the correct letter, time and points identical.
+          This format imports multiple-choice questions. The first language is the host/editor view.
+          Participants choose their question language once, before starting. Maximum 100 questions, 20 languages, 256 KB.
+        </p>
         <details className="rounded-2xl bg-surface-2 p-3 text-sm">
           <summary className="cursor-pointer font-semibold">Format</summary>
           <p className="mt-2 text-muted">

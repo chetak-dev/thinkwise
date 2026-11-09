@@ -19,6 +19,7 @@ import {
   parseNumberAnswer,
   type DraftQuestion,
 } from './quiz';
+import { isMultilingualCsv, multilingualQuestions } from './multilingual';
 
 /** Same column names other quiz tools use, so spreadsheets move between them. */
 export const CSV_COLUMNS = [
@@ -151,6 +152,7 @@ export interface CsvImport {
 }
 
 export function csvToQuestions(text: string, makeId: () => string): CsvImport {
+  if (isMultilingualCsv(text)) return multilingualQuestions(parseCsv(text), makeId);
   const errors: CsvImport['errors'] = [];
   if (text.length > CSV_MAX_BYTES) return { questions: [], errors: [{ row: 0, message: 'The file is larger than 256 KB.' }] };
   const rows = parseCsv(text);

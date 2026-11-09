@@ -1,8 +1,12 @@
 import { createServer, type IncomingMessage } from 'node:http';
-import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import {
   ClientMessage,
+  ParticipantTicket,
+  inLanguage,
+  quizLanguages,
+  reorderTranslations,
   CLOSE_KICKED,
   CLOSE_REPLACED,
   PlayableQuiz,
@@ -29,7 +33,7 @@ import {
   type Standing,
   type TimerState,
 } from '@thinkwise/shared';
-import { SAMPLE_QUIZ, type Quiz } from './quiz.js';
+import type { Quiz } from './quiz.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -75,6 +79,8 @@ interface Answer {
 }
 
 interface Player {
+  userId: string;
+  language: string;
   id: string;
   token: string;
   nickname: string;
@@ -103,6 +109,8 @@ interface Game {
   screens: Set<WebSocket>;
   players: Map<string, Player>;
   playersByToken: Map<string, Player>;
+  /** Accounts the host removed; they can't come back into this game. */
+  kickedUsers: Set<string>;
   locked: boolean;
   lobbyDirty: boolean;
   lastLobbyFlush: number;
@@ -211,6 +219,7 @@ function arrangeQuiz(quiz: Quiz): Quiz {
   const questions = quiz.rules.shuffleQuestions ? shuffled(quiz.questions) : quiz.questions;
   const reorder = (q: Quiz['questions'][number], order: number[]) => ({
     ...q,
+    translations: reorderTranslations(q.translations, order),
     options: order.map((i) => q.options[i]!),
     correct: q.correct.map((c) => order.indexOf(c)),
   });
@@ -273,8 +282,8 @@ function progressMsg(game: Game): ServerMessage {
   };
 }
 
-function publicQuestion(game: Game, index = game.qIndex): PublicQuestion {
-  const q = game.quiz.questions[index]!;
+function publicQuestion(game: Game, index = game.qIndex, language = ''): PublicQuestion {
+  const q = inLanguage(game.quiz.questions[index]!, language);
   return {
     index,
     total: game.quiz.questions.length,
@@ -360,7 +369,7 @@ function publicAnswer(answer: Answer): PlayerAnswer {
 }
 
 function resultMsg(game: Game, player: Player, rank: number, index = game.qIndex): ServerMessage {
-  const q = game.quiz.questions[index]!;
+  const q = inLanguage(game.quiz.questions[index]!, player.language);
   const show = game.quiz.rules.showCorrect;
   const answer = player.answers.get(index);
   return {
@@ -437,7 +446,7 @@ function startSelfQuestion(game: Game, player: Player, index: number) {
   player.selfEndsAt = Date.now() + q.timeLimitMs;
   player.selfTimer = setTimeout(() => closeSelfQuestion(game, player), q.timeLimitMs + game.quiz.rules.graceMs);
   game.selfDirty = true;
-  send(player.socket, { t: 'question', question: publicQuestion(game, index), timer: selfTimerState(game, player), myAnswer: null });
+  send(player.socket, { t: 'question', question: publicQuestion(game, index, player.language), timer: selfTimerState(game, player), myAnswer: null });
 }
 
 /** Answered or out of time: the player sees their result straight away. */
@@ -528,7 +537,7 @@ function startQuestion(game: Game, index: number) {
   scheduleClose(game);
   const msg: ServerMessage = { t: 'question', question: publicQuestion(game), timer: timerState(game) };
   toHosts(game, msg);
-  toPlayers(game, msg);
+  for (const p of game.players.values()) send(p.socket, { ...msg, question: publicQuestion(game, index, p.language) });
 }
 
 function setPaused(game: Game, paused: boolean) {
@@ -618,7 +627,7 @@ function submitAnswer(ws: WebSocket, game: Game, player: Player, index: number, 
   const current = self ? player.selfIndex : game.qIndex;
   if (game.phase !== 'question' || index !== current || player.answers.has(index)) return;
   if (self && player.selfPhase !== 'question') return;
-  const q = game.quiz.questions[index]!;
+  const q = inLanguage(game.quiz.questions[index]!, player.language);
   const read = readAnswer(q, input);
   if (!read) return fail(ws, 'bad_request', 'Invalid answer.');
   const endsAt = self ? player.selfEndsAt : game.endsAt;
@@ -762,8 +771,10 @@ function resultsPayload(game: Game): GameResults {
       ...(q.type === 'blanks' ? { blanks: q.blanks } : {}),
       ...(q.type === 'rating' ? { ratingMin: q.ratingMin, ratingMax: q.ratingMax } : {}),
       points: q.points,
+      translations: q.translations,
     })),
     players: [...game.players.values()].map((p) => ({
+      attemptId: p.id,
       nickname: p.nickname,
       avatar: p.avatar,
       score: p.score,
@@ -870,7 +881,7 @@ function syncPlayer(game: Game, player: Player) {
     if (player.selfPhase === 'done') return send(ws, selfDoneMsg(game, player));
     send(ws, {
       t: 'question',
-      question: publicQuestion(game, player.selfIndex),
+      question: publicQuestion(game, player.selfIndex, player.language),
       timer: selfTimerState(game, player),
       myAnswer: null,
     });
@@ -885,14 +896,14 @@ function syncPlayer(game: Game, player: Player) {
       const mine = player.answers.get(game.qIndex);
       send(ws, {
         t: 'question',
-        question: publicQuestion(game),
+        question: publicQuestion(game, game.qIndex, player.language),
         timer: timerState(game),
         myAnswer: mine ? publicAnswer(mine) : null,
       });
       break;
     }
     case 'reveal': {
-      send(ws, { t: 'question', question: publicQuestion(game), timer: timerState(game), myAnswer: null });
+      send(ws, { t: 'question', question: publicQuestion(game, game.qIndex, player.language), timer: timerState(game), myAnswer: null });
       send(ws, resultMsg(game, player, rankOf(game, player)));
       break;
     }
@@ -989,16 +1000,17 @@ function attachPlayer(ws: WebSocket, conn: Connection, game: Game, player: Playe
   syncPlayer(game, player);
 }
 
-function createGame(ws: WebSocket | null, quiz: Quiz = SAMPLE_QUIZ, mode: GameMode = 'live'): Game {
+function createGame(quiz: Quiz, mode: GameMode = 'live'): Game {
   const game: Game = {
     id: randomUUID(),
     pin: newPin(),
     hostToken: randomUUID(),
     screenKey: randomUUID(),
-    hosts: new Set(ws ? [ws] : []),
+    hosts: new Set(),
     screens: new Set(),
     players: new Map(),
     playersByToken: new Map(),
+    kickedUsers: new Set(),
     locked: false,
     lobbyDirty: false,
     lastLobbyFlush: 0,
@@ -1041,7 +1053,7 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
   const role = conn.role;
   if (role.kind !== 'none') role.game.lastActivity = Date.now();
 
-  if (msg.t.startsWith('host:') && msg.t !== 'host:create' && msg.t !== 'host:resume' && role.kind !== 'host') {
+  if (msg.t.startsWith('host:') && msg.t !== 'host:resume' && role.kind !== 'host') {
     return fail(ws, 'not_authorized', 'Only the host can do that.');
   }
   const game = role.kind === 'host' ? role.game : null;
@@ -1050,14 +1062,6 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
   if (game && isSelf(game) && liveOnly.includes(msg.t)) return;
 
   switch (msg.t) {
-    case 'host:create': {
-      if (role.kind === 'host') role.game.hosts.delete(ws);
-      else if (role.kind !== 'none') return fail(ws, 'bad_request', 'Already in a game.');
-      const created = createGame(ws);
-      conn.role = { kind: 'host', game: created };
-      return syncHost(ws, created);
-    }
-
     case 'host:resume': {
       if (role.kind !== 'none' && role.kind !== 'host') return fail(ws, 'bad_request', 'Already in a game.');
       const found = games.get(msg.gameId);
@@ -1091,6 +1095,7 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
       const player = game!.players.get(msg.playerId);
       if (!player) return;
       clearPlayerTimer(player);
+      game!.kickedUsers.add(player.userId);
       game!.players.delete(player.id);
       game!.playersByToken.delete(player.token);
       game!.lobbyDirty = true;
@@ -1149,19 +1154,34 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
 
     case 'player:join': {
       if (role.kind !== 'none') return fail(ws, 'bad_request', 'Already in a game.');
+      const ticket = readParticipantTicket(msg.ticket);
+      const target = gamesByPin.get(msg.pin);
+      if (!ticket || !target || ticket.gameId !== target.id) return fail(ws, 'not_authorized', 'Sign in to join this quiz.');
+      if (target.kickedUsers.has(ticket.userId)) return fail(ws, 'not_authorized', 'The host removed you from this game.');
+      const existing = target.players.get(ticket.attemptId);
+      if (existing) return attachPlayer(ws, conn, target, existing);
       const found = findJoinableGame(ws, msg.pin, conn);
       if (!found) return;
-      const wanted = msg.nickname.toLocaleLowerCase();
+      const languages = quizLanguages(found.quiz);
+      if (languages.length ? !languages.includes(ticket.language) : ticket.language !== '') {
+        return fail(ws, 'bad_request', 'Choose an available question language.');
+      }
+      if ([...found.players.values()].some((p) => p.userId === ticket.userId)) {
+        return fail(ws, 'not_authorized', 'You have already started this quiz. Resume your original attempt.');
+      }
+      const wanted = ticket.nickname.toLocaleLowerCase();
       for (const p of found.players.values()) {
         if (p.nickname.toLocaleLowerCase() === wanted) {
           return fail(ws, 'name_taken', 'That nickname is taken. Try another.');
         }
       }
       const player: Player = {
-        id: randomUUID(),
+        id: ticket.attemptId,
+        userId: ticket.userId,
+        language: ticket.language,
         token: randomUUID(),
-        nickname: msg.nickname,
-        avatar: msg.avatar,
+        nickname: ticket.nickname,
+        avatar: ticket.avatar,
         socket: null,
         joinedAt: Date.now(),
         score: 0,
@@ -1181,8 +1201,12 @@ function handle(ws: WebSocket, conn: Connection, msg: ClientMessage) {
     }
 
     case 'player:resume': {
+      const ticket = readParticipantTicket(msg.ticket);
       const found = gamesByPin.get(msg.pin);
       const player = found?.playersByToken.get(msg.playerToken);
+      if (!ticket || !found || ticket.gameId !== found.id || ticket.attemptId !== player?.id) {
+        return fail(ws, 'not_authorized', 'Sign in to resume your quiz.');
+      }
       if (!found || !player) return fail(ws, 'session_expired', 'Your previous game has ended.');
       return attachPlayer(ws, conn, found, player);
     }
@@ -1237,6 +1261,20 @@ function bearerOk(header: string | undefined) {
   return sameSecret(header.slice(7), REALTIME_SECRET);
 }
 
+function readParticipantTicket(ticket: string | undefined) {
+  if (!ticket || !REALTIME_SECRET) return null;
+  const parts = ticket.split('.');
+  if (parts.length !== 2) return null;
+  const [payload, signature] = parts;
+  const expected = createHmac('sha256', REALTIME_SECRET).update(payload!).digest('base64url');
+  if (!sameSecret(signature!, expected)) return null;
+  let value: unknown;
+  try { value = JSON.parse(Buffer.from(payload!, 'base64url').toString('utf8')); }
+  catch { return null; }
+  const parsed = ParticipantTicket.safeParse(value);
+  return parsed.success && parsed.data.expiresAt > Date.now() ? parsed.data : null;
+}
+
 function createGameFromRequest(req: IncomingMessage, res: import('node:http').ServerResponse) {
   if (!REALTIME_SECRET) return json(res, 503, { error: 'not_configured' });
   if (!bearerOk(req.headers.authorization)) return json(res, 401, { error: 'unauthorized' });
@@ -1271,7 +1309,7 @@ function createGameFromRequest(req: IncomingMessage, res: import('node:http').Se
     if (mode !== 'live' && mode !== 'self') return json(res, 422, { error: 'invalid_settings' });
     const lockOnStart = (body as { settings?: { lockOnStart?: unknown } }).settings?.lockOnStart;
     if (lockOnStart !== undefined && typeof lockOnStart !== 'boolean') return json(res, 422, { error: 'invalid_settings' });
-    const game = createGame(null, quiz, mode);
+    const game = createGame(quiz, mode);
     game.report = true;
     game.lockOnStart = lockOnStart === true;
     if (autoAdvance !== undefined && mode === 'live') game.settings.autoAdvance = autoAdvance;
@@ -1288,6 +1326,13 @@ const http = createServer((req, res) => {
     return;
   }
   if (req.method === 'POST' && req.url === '/games') return createGameFromRequest(req, res);
+  if (req.method === 'GET' && req.url?.startsWith('/games/info?')) {
+    if (!bearerOk(req.headers.authorization)) return json(res, 401, { error: 'unauthorized' });
+    const pin = new URL(req.url, 'http://local').searchParams.get('pin') ?? '';
+    const game = gamesByPin.get(pin);
+    if (!game) return json(res, 404, { error: 'not_found' });
+    return json(res, 200, { gameId: game.id, languages: quizLanguages(game.quiz), phase: game.phase, locked: game.locked });
+  }
   if (req.method === 'GET' && req.url?.startsWith('/games/status?')) {
     if (!bearerOk(req.headers.authorization)) return json(res, 401, { error: 'unauthorized' });
     const ids = (new URL(req.url, 'http://local').searchParams.get('ids') ?? '').split(',').slice(0, 20);

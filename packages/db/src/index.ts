@@ -8,3 +8,5 @@ export * from './feedback';
 export * from './eventFeedback';
 export * from './selfPaced';
 export * from './selfSessions';
+export * from './participation';
+export * from './profile';

@@ -96,6 +96,7 @@ export async function launchFeedbackEventAction(id: string): Promise<LaunchResul
       questionCount: check.quiz.questions.length,
       eventId: event.id,
       hostToken: game.hostToken,
+      quiz: check.quiz,
     });
     revalidatePath(`/feedback/events/${event.id}`);
     return { ok: true, gameId: game.gameId, hostToken: game.hostToken, quizId: quiz.id };

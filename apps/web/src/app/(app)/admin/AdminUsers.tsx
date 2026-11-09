@@ -50,6 +50,8 @@ export function AdminUsers({ users, dates }: { users: AdminUserRow[]; dates: Rec
                 <td className="px-5 py-3.5">
                   <p className="font-semibold">{u.name}</p>
                   <p className="text-xs text-muted">{u.email}</p>
+                  {u.phone && <p className="text-xs text-muted">{u.phone}</p>}
+                  {u.address && <p className="max-w-xs whitespace-pre-line text-xs text-muted">{u.address}</p>}
                 </td>
                 <td className="hidden px-5 py-3.5 text-muted sm:table-cell">{dates[u.id]}</td>
                 <td className="px-5 py-3.5">

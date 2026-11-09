@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createSession, getDb, signInWithGoogle } from '@thinkwise/db';
 import { GOOGLE_STATE_COOKIE, fetchGoogleProfile, isGoogleEnabled, publicOrigin, readGoogleState, sameState } from '@/lib/google';
-import { SESSION_COOKIE, safeNext } from '@/lib/session';
+import { SESSION_COOKIE, afterSignIn, safeNext } from '@/lib/session';
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const user = profile && (await signInWithGoogle(db, profile));
     if (!user) return goTo('/login?error=google');
     const session = await createSession(db, user.id);
-    const response = goTo(safeNext(saved.next));
+    const response = goTo(afterSignIn(user, safeNext(saved.next)));
     response.cookies.set(SESSION_COOKIE, session.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

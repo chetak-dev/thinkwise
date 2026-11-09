@@ -25,7 +25,7 @@ import {
   setFavourite,
   totalTimeMs,
 } from '@thinkwise/db';
-import { CSV_MAX_BYTES, csvToQuestions, toPlayable, type GameMode, type PlayableQuiz } from '@thinkwise/shared';
+import { CSV_MAX_BYTES, SAMPLE_QUIZ, csvToQuestions, toPlayable, type GameMode, type PlayableQuiz } from '@thinkwise/shared';
 import { randomUUID } from 'node:crypto';
 import { requireUser } from '@/lib/session';
 import { createLiveGame } from '@/lib/realtime';
@@ -216,6 +216,7 @@ export async function hostQuizAction(id: string, options?: StartOptions): Promis
       questionCount: check.quiz.questions.length,
       mode: start.mode,
       hostToken: game.hostToken,
+      quiz: check.quiz,
     });
     return { ok: true, gameId: game.gameId, hostToken: game.hostToken };
   } catch {
@@ -241,6 +242,28 @@ export async function hostPublishedQuizAction(id: string, options?: StartOptions
       questionCount: quiz.questions.length,
       mode: start.mode,
       hostToken: game.hostToken,
+      quiz,
+    });
+    return { ok: true, gameId: game.gameId, hostToken: game.hostToken };
+  } catch {
+    return { ok: false, error: 'The game server isn’t responding. Please try again in a moment.' };
+  }
+}
+
+/** Hosts the built-in sample quiz as a recorded live game, so signed-in players can join it like any other. */
+export async function hostSampleAction(): Promise<HostResult> {
+  const user = await requireUser();
+  if (!canHost(user)) return { ok: false, error: NO_HOST_ACCESS };
+  try {
+    const game = await createLiveGame(SAMPLE_QUIZ, { autoAdvance: true, mode: 'live' });
+    await createGameSession(getDb(), user, {
+      gameId: game.gameId,
+      pin: game.pin,
+      quizId: null,
+      title: SAMPLE_QUIZ.title,
+      questionCount: SAMPLE_QUIZ.questions.length,
+      hostToken: game.hostToken,
+      quiz: SAMPLE_QUIZ,
     });
     return { ok: true, gameId: game.gameId, hostToken: game.hostToken };
   } catch {

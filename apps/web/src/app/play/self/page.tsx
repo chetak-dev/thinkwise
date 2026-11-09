@@ -29,10 +29,18 @@ async function post<T>(body: Record<string, unknown>): Promise<{ status: number;
       body: JSON.stringify(body),
       cache: 'no-store',
     });
-    return { status: res.status, data: (await res.json().catch(() => null)) as T | null };
+    const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+    if (res.status === 401 || res.status === 403) toSignIn(data?.error === 'profile' ? 'profile' : 'sign_in', String(body.pin ?? ''));
+    return { status: res.status, data };
   } catch {
     return { status: 0, data: null };
   }
+}
+
+/** Self-paced quizzes need an account with a complete profile. */
+function toSignIn(reason: 'sign_in' | 'profile', pin: string) {
+  const next = encodeURIComponent(pin ? `/play/self?pin=${pin}` : '/play/self');
+  window.location.assign(reason === 'profile' ? `/welcome?next=${next}` : `/login?next=${next}`);
 }
 
 function formatWhen(ms: number, lang: Lang) {
@@ -69,6 +77,8 @@ function SelfFlow() {
   const [state, setState] = useState<SelfPlayerState | null>(null);
   const [nickname, setNickname] = useState('');
   const [avatar, setAvatar] = useState<Avatar>(AVATARS[0]);
+  const [language, setLanguage] = useState('');
+  const [signedIn, setSignedIn] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [index, setIndex] = useState(0);
@@ -95,7 +105,7 @@ function SelfFlow() {
   const refresh = useCallback(async () => {
     const tok = pin ? localStorage.getItem(tokenKey(pin)) : null;
     if (!tok) return false;
-    const { status, data } = await post<{ state: SelfPlayerState }>({ action: 'state', token: tok });
+    const { status, data } = await post<{ state: SelfPlayerState }>({ action: 'state', token: tok, pin });
     if (data && 'state' in data && data.state) {
       applyState(data.state);
       return true;
@@ -112,7 +122,7 @@ function SelfFlow() {
       if (await refresh()) return;
       try {
         const res = await fetch(`/api/self?pin=${pin}`, { cache: 'no-store' });
-        const body = (await res.json()) as { info?: SelfInfo };
+        const body = (await res.json()) as { info?: SelfInfo; signedIn?: boolean };
         if (cancelled) return;
         if (!body.info) {
           setError(t.selfNotFound);
@@ -120,7 +130,19 @@ function SelfFlow() {
           return;
         }
         offset.current = body.info.serverNow - Date.now();
+        setSignedIn(body.signedIn !== false);
+        if (body.info.mine) setNickname(body.info.mine.nickname);
         setInfo(body.info);
+        setLanguage(body.info.mine?.language ?? (body.info.languages.length === 1 ? body.info.languages[0]! : ''));
+        // An attempt already started (maybe on another device) carries on where it was left.
+        if (body.info.mine && body.info.state !== 'upcoming') {
+          const { data } = await post<{ token?: string }>({ action: 'join', pin, nickname: body.info.mine.nickname, avatar: AVATARS[0] });
+          if (cancelled) return;
+          if (data?.token) {
+            localStorage.setItem(tokenKey(pin), data.token);
+            if (await refresh()) return;
+          }
+        }
         setStep('info');
       } catch {
         if (!cancelled) {
@@ -214,10 +236,17 @@ function SelfFlow() {
 
   const join = async (e: FormEvent) => {
     e.preventDefault();
-    if (!nickname.trim() || busy) return;
+    if (!signedIn) return toSignIn('sign_in', pin);
+    if (!nickname.trim() || busy || (info?.languages.length && !language)) return;
     setBusy(true);
     setError(null);
-    const { data } = await post<{ token?: string; error?: string }>({ action: 'join', pin, nickname: nickname.trim(), avatar });
+    const { data } = await post<{ token?: string; error?: string }>({
+      action: 'join',
+      pin,
+      nickname: nickname.trim(),
+      avatar,
+      ...(language ? { language } : {}),
+    });
     if (data?.token) {
       localStorage.setItem(tokenKey(pin), data.token);
       setIndex(0);
@@ -387,8 +416,41 @@ function SelfFlow() {
                 )}
               </ul>
 
-              {info.state === 'open' ? (
+              {info.state === 'open' && !signedIn ? (
+                <div className="space-y-4">
+                  <p className="rounded-2xl bg-nova-500/10 px-4 py-3 text-sm">{t.signInNote}</p>
+                  <button type="button" onClick={() => toSignIn('sign_in', pin)} className={SUBMIT_CLASS}>
+                    {t.signInToPlay}
+                  </button>
+                </div>
+              ) : info.state === 'open' ? (
                 <form onSubmit={join} className="space-y-5">
+                  {info.mine && (
+                    <p role="status" className="rounded-2xl bg-sun-500/15 px-4 py-3 text-sm font-semibold">
+                      {t.alreadyStarted(info.mine.language)}
+                    </p>
+                  )}
+                  {info.languages.length > 0 && !info.mine && (
+                    <fieldset>
+                      <legend className="mb-2 text-sm font-semibold">{t.questionLanguage}</legend>
+                      <div className="flex flex-wrap gap-2">
+                        {info.languages.map((l) => (
+                          <button
+                            key={l}
+                            type="button"
+                            aria-pressed={language === l}
+                            onClick={() => setLanguage(l)}
+                            className={`rounded-xl border-2 px-4 py-2 text-sm font-bold transition ${
+                              language === l ? 'border-nova-500 bg-nova-100 dark:bg-nova-900' : 'border-app hover:bg-surface-2'
+                            }`}
+                          >
+                            {l}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-xs text-muted">{t.languageLocked}</p>
+                    </fieldset>
+                  )}
                   <div>
                     <label htmlFor="nickname" className="mb-1.5 block text-sm font-semibold">
                       {t.nickname}
@@ -429,9 +491,13 @@ function SelfFlow() {
                       {error}
                     </p>
                   )}
-                  <button type="submit" disabled={!nickname.trim() || busy} className={SUBMIT_CLASS}>
+                  <button
+                    type="submit"
+                    disabled={!nickname.trim() || busy || (info.languages.length > 0 && !language)}
+                    className={SUBMIT_CLASS}
+                  >
                     {busy && <Loader2 className="mr-2 size-5 animate-spin" aria-hidden="true" />}
-                    {t.selfStart}
+                    {info.mine ? t.resumeAttempt : t.selfStart}
                   </button>
                   <p className="text-center text-[11px] text-muted">
                     {t.privacyNote}{' '}
@@ -769,6 +835,9 @@ function DoneStage({
           })}
         </ol>
       )}
+      <Link href="/history" className="font-semibold text-nova-600 underline dark:text-nova-300">
+        {t.myHistory}
+      </Link>
       <button type="button" onClick={() => window.location.assign('/play')} className="font-semibold text-nova-600 underline dark:text-nova-300">
         {t.joinAnother}
       </button>

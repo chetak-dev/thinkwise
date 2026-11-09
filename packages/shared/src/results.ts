@@ -7,6 +7,7 @@ import {
   formatNumberAnswer,
   isScored,
   normaliseAnswer,
+  QuestionTranslations,
 } from './quiz';
 import { toCsv } from './csv';
 
@@ -36,12 +37,14 @@ export const GameResults = z.object({
         ratingMin: z.number().int().min(0).max(1).optional(),
         ratingMax: z.number().int().min(3).max(10).optional(),
         points: z.number().int().min(0),
+        translations: QuestionTranslations.optional(),
       }),
     )
     .max(500),
   players: z
     .array(
       z.object({
+        attemptId: z.uuid().optional(),
         nickname: z.string().max(60),
         avatar: z.string().max(16),
         score: z.number().int(),

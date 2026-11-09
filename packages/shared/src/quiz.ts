@@ -191,6 +191,44 @@ const MaxWords = z
   .int()
   .refine((n) => (MAX_WORDS_VALUES as readonly number[]).includes(n), 'Unsupported word limit');
 
+export const QuestionTranslation = z.object({
+  text: z.string().trim().min(1).max(QUESTION_TEXT_MAX),
+  options: z.array(z.string().trim().min(1).max(OPTION_TEXT_MAX)).max(MAX_OPTIONS),
+  hint: z.string().max(HINT_MAX).default(''),
+  explanation: z.string().max(EXPLANATION_MAX).default(''),
+});
+export const QuestionTranslations = z.record(
+  z.string().trim().min(1).max(40).regex(/^[\p{L}\p{M}\p{N} ()-]+$/u),
+  QuestionTranslation,
+).refine((value) => Object.keys(value).length <= 20, 'Use at most 20 languages');
+
+/** Languages every question is translated into, alphabetically (jsonb does not keep key order). */
+export function quizLanguages(quiz: { questions: { translations?: z.infer<typeof QuestionTranslations> }[] }): string[] {
+  const first = Object.keys(quiz.questions[0]?.translations ?? {});
+  return first
+    .filter((language) => quiz.questions.every((q) => q.translations?.[language] !== undefined))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+export function inLanguage<Q extends { text: string; options: string[]; translations?: z.infer<typeof QuestionTranslations> }>(
+  q: Q, language: string,
+): Q {
+  const translated = q.translations?.[language];
+  return translated ? { ...q, ...translated } : q;
+}
+
+export function translatedQuiz<Q extends { questions: { text: string; options: string[]; translations?: z.infer<typeof QuestionTranslations> }[] }>(
+  quiz: Q, language: string,
+): Q {
+  return { ...quiz, questions: quiz.questions.map((q) => inLanguage(q, language)) };
+}
+
+export function reorderTranslations(translations: z.infer<typeof QuestionTranslations> | undefined, order: number[]) {
+  return translations && Object.fromEntries(Object.entries(translations).map(([language, q]) => [
+    language, { ...q, options: order.map((i) => q.options[i]!) },
+  ]));
+}
+
 /** A question as saved by the editor. Drafts may be incomplete; fields added later default for older saves. */
 export const DraftQuestion = z.object({
   id: z.string().min(1).max(40),
@@ -222,6 +260,7 @@ export const DraftQuestion = z.object({
   hint: z.string().max(HINT_MAX).default(''),
   explanation: z.string().max(EXPLANATION_MAX).default(''),
   tags: z.string().max(TAGS_MAX).default(''),
+  translations: QuestionTranslations.optional(),
 });
 export type DraftQuestion = z.infer<typeof DraftQuestion>;
 
@@ -253,11 +292,15 @@ const PlayableQuestion = z
     penalty: Penalty.default(0),
     hint: z.string().trim().max(HINT_MAX).default(''),
     explanation: z.string().trim().max(EXPLANATION_MAX).default(''),
+    translations: QuestionTranslations.optional(),
   })
   .superRefine((q, ctx) => {
     const problem = (message: string) => ctx.addIssue({ code: 'custom', message });
     if (q.correct.some((c) => c >= q.options.length)) problem('A correct answer points at a missing option');
     if (new Set(q.correct).size !== q.correct.length) problem('Duplicate correct answers');
+    for (const translation of Object.values(q.translations ?? {})) {
+      if (translation.options.length !== q.options.length) problem('Translations must have the same number of options');
+    }
     if (q.type === 'order') {
       // Options are the items; `correct` lists them in the right order.
       if (q.options.length < MIN_OPTIONS || q.correct.length !== q.options.length) problem('Put at least two items in order');
@@ -290,6 +333,11 @@ export const PlayableQuiz = z.object({
   title: z.string().trim().min(1).max(QUIZ_TITLE_MAX),
   questions: z.array(PlayableQuestion).min(1).max(MAX_QUESTIONS),
   rules: GameRules.default(() => GameRules.parse({})),
+}).superRefine((quiz, ctx) => {
+  const languages = new Set(quiz.questions.flatMap((q) => Object.keys(q.translations ?? {})));
+  if ([...languages].some((l) => !quiz.questions.every((q) => q.translations?.[l]))) {
+    ctx.addIssue({ code: 'custom', message: 'Every question must include every offered language' });
+  }
 });
 export type PlayableQuiz = z.infer<typeof PlayableQuiz>;
 export type PlayableQuizInput = z.input<typeof PlayableQuiz>;
@@ -383,8 +431,14 @@ export type QuizCheck =
   | { ok: false; problems: { index: number; issues: string[] }[]; titleMissing: boolean; empty: boolean };
 
 export function toPlayable(title: string, questions: DraftQuestion[], settings?: QuizSettings): QuizCheck {
+  const languages = new Set(questions.flatMap((q) => Object.keys(q.translations ?? {})));
   const problems = questions
-    .map((q, index) => ({ index, issues: questionIssues(q) }))
+    .map((q, index) => ({ index, issues: [
+      ...questionIssues(q),
+      ...[...languages].filter((l) => !q.translations?.[l]).map((l) => `Add the ${l} translation (reimport the complete sheet)`),
+      ...Object.entries(q.translations ?? {}).filter(([, t]) => t.options.length !== q.options.length)
+        .map(([l]) => `The ${l} translation must have the same options as the original`),
+    ] }))
     .filter((p) => p.issues.length > 0);
   const titleMissing = !title.trim();
   const empty = questions.length === 0;
@@ -395,6 +449,7 @@ export function toPlayable(title: string, questions: DraftQuestion[], settings?:
       const text = q.text.trim();
       const cleanList = (list: string[]) => [...new Set(list.map((a) => a.trim()).filter(Boolean))];
       return {
+        translations: q.translations,
         type: q.type,
         text,
         options: q.type === 'tf' ? [...TRUE_FALSE_OPTIONS] : usesOptions(q.type) || q.type === 'order' ? q.options.map((o) => o.trim()) : [],

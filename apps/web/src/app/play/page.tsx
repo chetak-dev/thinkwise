@@ -61,6 +61,50 @@ type Result = Extract<ServerMessage, { t: 'result' }>;
 type Final = Extract<ServerMessage, { t: 'final' }>;
 
 const tokenKey = (pin: string) => `tw-player-${pin}`;
+
+type AccessInfo = { languages: string[]; attempt: { language: string; nickname: string; avatar: string } | null };
+
+function toSignIn(pin: string, error?: string) {
+  const next = encodeURIComponent(`/play?pin=${pin}`);
+  window.location.assign(error === 'profile' ? `/welcome?next=${next}` : `/login?next=${next}`);
+}
+
+/** Live games need an account with a complete profile: the game's languages and any attempt already started. */
+async function accessInfo(pin: string): Promise<{ info: AccessInfo | null; error: string }> {
+  try {
+    const res = await fetch(`/api/play/access?pin=${pin}`, { cache: 'no-store' });
+    const body = (await res.json().catch(() => ({}))) as Partial<AccessInfo> & { error?: string };
+    if (res.status === 401 || res.status === 403) {
+      toSignIn(pin, body.error);
+      return { info: null, error: '' };
+    }
+    return res.ok
+      ? { info: { languages: body.languages ?? [], attempt: body.attempt ?? null }, error: '' }
+      : { info: null, error: body.error ?? 'Something went wrong. Please try again.' };
+  } catch {
+    return { info: null, error: 'Couldn’t reach ThinkWise. Check your connection and try again.' };
+  }
+}
+
+/** Starts or resumes the account's one attempt; the short-lived ticket vouches for the player to the game server. */
+async function ticketFor(pin: string, init?: { nickname: string; avatar: string; language: string }) {
+  try {
+    const res = await fetch('/api/play/access', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pin, ...init }),
+      cache: 'no-store',
+    });
+    const body = (await res.json().catch(() => ({}))) as { ticket?: string; error?: string };
+    if (res.status === 401 || res.status === 403) {
+      toSignIn(pin, body.error);
+      return { ticket: null, error: '' };
+    }
+    return body.ticket ? { ticket: body.ticket, error: '' } : { ticket: null, error: body.error ?? 'Couldn’t join. Please try again.' };
+  } catch {
+    return { ticket: null, error: 'Couldn’t reach ThinkWise. Check your connection and try again.' };
+  }
+}
 const feedbackDoneKey = (pin: string, stage: 'before' | 'after') => `tw-feedback-${stage}-done-${pin}`;
 const eventRefKey = (pin: string) => `tw-event-ref-${pin}`;
 
@@ -295,6 +339,9 @@ function FinalStage({ final, me, t, rules }: { final: Final; me: Me; t: Strings;
           </ol>
         </div>
       )}
+      <Link href="/history" className="font-semibold text-nova-600 underline dark:text-nova-300">
+        {t.myHistory}
+      </Link>
       <button
         type="button"
         onClick={() => window.location.assign('/play')}
@@ -322,6 +369,8 @@ function PlayFlow() {
   const [pin, setPin] = useState<string | null>(null);
   const [nickname, setNickname] = useState('');
   const [avatar, setAvatar] = useState<Avatar>(AVATARS[0]);
+  const [languages, setLanguages] = useState<string[]>([]);
+  const [language, setLanguage] = useState('');
   const [me, setMe] = useState<Me | null>(null);
   const [score, setScore] = useState(0);
   const [count, setCount] = useState(0);
@@ -375,9 +424,9 @@ function PlayFlow() {
   const { status, send } = useGameSocket({
     onOpen(send) {
       const target = pin ?? (linkPin.length === 6 ? linkPin : null);
-      const token = target ? localStorage.getItem(tokenKey(target)) : null;
-      if (target && token) {
-        send({ t: 'player:resume', pin: target, playerToken: token });
+      const joinedBefore = target ? localStorage.getItem(tokenKey(target)) : null;
+      if (target && joinedBefore) {
+        void rejoin(target, send);
       } else if (target && step === 'pin' && linkPin.length === 6) {
         setStep('checking');
         send({ t: 'pin:check', pin: target });
@@ -389,7 +438,7 @@ function PlayFlow() {
           setPin(msg.pin);
           setError(null);
           void ensureEventForm(msg.pin);
-          setStep('profile');
+          void afterPin(msg.pin);
           break;
         case 'player:ready':
           localStorage.setItem(tokenKey(msg.pin), msg.playerToken);
@@ -487,22 +536,62 @@ function PlayFlow() {
     send({ t: 'pin:check', pin: clean });
   };
 
-  const join = () => {
+  /** Back into a game this account already joined, e.g. after a dropped connection or on another device. */
+  const rejoin = async (target: string, sendNow: typeof send) => {
+    const { ticket, error: problem } = await ticketFor(target);
+    if (ticket) {
+      sendNow({ t: 'player:join', pin: target, ticket });
+      return;
+    }
+    if (!problem) return;
+    localStorage.removeItem(tokenKey(target));
+    setMe(null);
+    setStep('pin');
+    setError(problem);
+  };
+
+  const afterPin = async (target: string) => {
+    setStep('checking');
+    const { info, error: problem } = await accessInfo(target);
+    if (!info) {
+      if (problem) {
+        setStep('pin');
+        setError(problem);
+      }
+      return;
+    }
+    setLanguages(info.languages);
+    if (info.attempt) {
+      setNickname(info.attempt.nickname);
+      setLanguage(info.attempt.language);
+      await rejoin(target, send);
+      return;
+    }
+    setLanguage(info.languages.length === 1 ? info.languages[0]! : '');
+    setStep('profile');
+  };
+
+  const join = async () => {
     if (!pin) return;
     setError(null);
-    send({ t: 'player:join', pin, nickname: nickname.trim(), avatar });
+    const { ticket, error: problem } = await ticketFor(pin, { nickname: nickname.trim(), avatar, language });
+    if (ticket) send({ t: 'player:join', pin, ticket });
+    else if (problem) {
+      setStep('profile');
+      setError(problem);
+    }
   };
 
   const submitProfile = async (e: FormEvent) => {
     e.preventDefault();
-    if (!pin || !nickname.trim()) return;
+    if (!pin || !nickname.trim() || (languages.length > 0 && !language)) return;
     const event = await ensureEventForm(pin);
     if (event?.before && !localStorage.getItem(feedbackDoneKey(pin, 'before'))) {
       setStep('feedback');
       window.scrollTo({ top: 0 });
       return;
     }
-    join();
+    void join();
   };
 
   const sendFeedback = async (stage: 'before' | 'after', answers: FeedbackAnswers): Promise<'ok' | 'failed' | Record<string, AnswerProblem>> => {
@@ -526,7 +615,7 @@ function PlayFlow() {
       return 'failed';
     }
     localStorage.setItem(feedbackDoneKey(pin, stage), '1');
-    if (stage === 'before') join();
+    if (stage === 'before') void join();
     else setAfterDone(true);
     return 'ok';
   };
@@ -672,6 +761,27 @@ function PlayFlow() {
                   ))}
                 </div>
               </fieldset>
+              {languages.length > 0 && (
+                <fieldset>
+                  <legend className="mb-2 text-sm font-semibold">{t.questionLanguage}</legend>
+                  <div className="flex flex-wrap gap-2">
+                    {languages.map((l) => (
+                      <button
+                        key={l}
+                        type="button"
+                        aria-pressed={language === l}
+                        onClick={() => setLanguage(l)}
+                        className={`rounded-xl border-2 px-4 py-2 text-sm font-bold transition ${
+                          language === l ? 'border-nova-500 bg-nova-100 dark:bg-nova-900' : 'border-app hover:bg-surface-2'
+                        }`}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-muted">{t.languageLocked}</p>
+                </fieldset>
+              )}
               {error && (
                 <p role="alert" className="text-center text-sm font-semibold text-rose-600 dark:text-rose-300">
                   {error}
@@ -679,7 +789,7 @@ function PlayFlow() {
               )}
               <button
                 type="submit"
-                disabled={!nickname.trim() || status !== 'open'}
+                disabled={!nickname.trim() || status !== 'open' || (languages.length > 0 && !language)}
                 className="h-14 w-full rounded-2xl bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] text-lg font-bold text-white shadow-lift transition hover:brightness-110 disabled:opacity-60"
               >
                 {t.joinButton}

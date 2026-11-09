@@ -6,23 +6,26 @@ export const metadata: Metadata = { title: 'Privacy · ThinkWise' };
 
 const SECTIONS: { title: string; body: React.ReactNode }[] = [
   {
-    title: 'Players (no account)',
+    title: 'Players',
     body: (
       <>
         <p>
-          Joining a game needs only a PIN. We keep the nickname and avatar you choose and the answers you give, with how long
-          each took, so the game can be scored and the host can see the results. We never ask players for an email address,
-          phone number or real name.
+          Joining a game needs a PIN and a signed-in account. For your account we keep your name, email address, phone number
+          and address. Only you and the site admins can see your phone number and address; hosts see your nickname and results.
         </p>
         <p>
-          Your browser remembers a random token for the game you joined, so a dropped connection can rejoin with the same score,
-          and your display settings (language, sound, text size). These stay on your device.
+          For each quiz we keep the nickname, avatar and question language you choose and the answers you give, with how long
+          each took, so the game can be scored, each account takes it only once, and you can see it in your quiz history.
+        </p>
+        <p>
+          Your browser remembers which game you joined, so a dropped connection can rejoin with the same score, and your display
+          settings (language, sound, text size). These stay on your device.
         </p>
       </>
     ),
   },
   {
-    title: 'Hosts (account holders)',
+    title: 'Hosts and admins',
     body: (
       <>
         <p>
@@ -40,8 +43,9 @@ const SECTIONS: { title: string; body: React.ReactNode }[] = [
     title: 'Children and schools',
     body: (
       <p>
-        ThinkWise is built so pupils can take part without sharing personal details. Hosts should ask players to use first
-        names or made-up nicknames, and schools should follow their own rules for collecting pupils’ data.
+        Players need an account with contact details, so pupils should take part with a parent’s, guardian’s or school’s
+        consent. Hosts should ask players to use first names or made-up nicknames, and schools should follow their own rules
+        for collecting pupils’ data.
       </p>
     ),
   },

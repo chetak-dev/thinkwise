@@ -3,7 +3,7 @@ import 'server-only';
 import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { canHost, getDb, getSessionUser, isSiteAdmin, type PublicUser } from '@thinkwise/db';
+import { canHost, getDb, getSessionUser, isSiteAdmin, profileComplete, type PublicUser } from '@thinkwise/db';
 
 export const SESSION_COOKIE = 'tw_session';
 
@@ -16,10 +16,11 @@ export function getAccess(user: PublicUser | null) {
   return { canHost: canHost(user), siteAdmin: isSiteAdmin(user) };
 }
 
-/** For pages that need a signed-in host. */
+/** For signed-in pages; accounts missing their name, phone or address complete those first. */
 export async function requireUser(next = '/dashboard'): Promise<PublicUser> {
   const user = await getCurrentUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(next)}`);
+  if (!profileComplete(user)) redirect(`/welcome?next=${encodeURIComponent(next)}`);
   return user;
 }
 
@@ -35,6 +36,21 @@ export async function requireSiteAdmin(next = '/dashboard'): Promise<PublicUser>
   const user = await requireUser(next);
   if (!isSiteAdmin(user)) redirect('/dashboard');
   return user;
+}
+
+/** For participant APIs: a signed-in account whose name, phone and address are filled in. */
+export async function getParticipant(): Promise<
+  { ok: true; user: PublicUser } | { ok: false; error: 'sign_in' | 'profile'; status: 401 | 403 }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: 'sign_in', status: 401 };
+  if (!profileComplete(user)) return { ok: false, error: 'profile', status: 403 };
+  return { ok: true, user };
+}
+
+/** Where to send someone after signing in: first to complete their profile if it is missing. */
+export function afterSignIn(user: PublicUser, next: string) {
+  return profileComplete(user) ? next : `/welcome?next=${encodeURIComponent(next)}`;
 }
 
 export async function setSessionCookie(token: string, expiresAt: Date) {

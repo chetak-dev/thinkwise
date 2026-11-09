@@ -34,12 +34,12 @@ const FEATURES = [
   {
     Icon: QrCode,
     title: 'PIN, QR or link',
-    body: 'Type the PIN, scan the code or tap the link you were sent, then pick a nickname. Nothing to install.',
+    body: 'Type the PIN, scan the code or tap the link you were sent, sign in, then pick a nickname. Nothing to install.',
   },
   {
     Icon: Users,
-    title: 'No account needed',
-    body: 'Players never sign up. Just join, answer and see how you did.',
+    title: 'Your quiz history',
+    body: 'Sign in once with email or Google. Every quiz you take is saved, with your score and answers.',
   },
   {
     Icon: Zap,
@@ -58,13 +58,13 @@ const FEATURES = [
   },
   {
     Icon: Lock,
-    title: 'Nicknames only',
-    body: 'You never share personal details, and correct answers stay hidden until it’s time to reveal them.',
+    title: 'Fair play',
+    body: 'Each quiz can be taken once per account, and correct answers stay hidden until it’s time to reveal them.',
   },
   {
     Icon: Globe2,
-    title: 'English, हिन्दी, ଓଡ଼ିଆ',
-    body: 'Choose your language on the join screen.',
+    title: 'Questions in your language',
+    body: 'When the organiser offers several languages, pick yours before you start. The screens also come in English, हिन्दी and ଓଡ଼ିଆ.',
   },
   {
     Icon: BarChart3,
@@ -75,7 +75,7 @@ const FEATURES = [
 
 const STEPS = [
   { title: 'Get the PIN or link', body: 'Your teacher or organiser shares it on the screen, in class or in a message.' },
-  { title: 'Pick a nickname', body: 'Enter the PIN (or open the link), choose a name and an avatar, and you’re in.' },
+  { title: 'Sign in and pick a nickname', body: 'Enter the PIN (or open the link), sign in, choose a name, an avatar and your language, and you’re in.' },
   { title: 'Answer and climb', body: 'Answer on your own phone, then see your score, your place and the right answers.' },
 ];
 
@@ -120,8 +120,8 @@ export default async function Home() {
               Got a PIN? <span className="nova-text">Jump straight in.</span>
             </h1>
             <p className="mt-6 max-w-xl text-lg text-muted">
-              Enter the PIN or open the link your organiser shared, pick a nickname and start answering on your phone. No
-              account, no app, no sign-up.
+              Enter the PIN or open the link your organiser shared, sign in, pick a nickname and start answering on your phone.
+              No app to install, and every result is saved to your history.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href="/play" className={BTN_PRIMARY_LG}>

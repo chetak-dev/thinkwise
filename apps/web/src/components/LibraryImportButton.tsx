@@ -15,12 +15,12 @@ export function LibraryImportButton() {
         className="inline-flex h-11 items-center gap-2 rounded-xl border border-app bg-surface px-5 font-semibold text-app transition hover:-translate-y-0.5 hover:border-nova-400 hover:text-nova-700 dark:hover:text-nova-300"
       >
         <FileUp className="size-5" aria-hidden="true" />
-        Import CSV
+        Import Excel / CSV
       </button>
       <ImportCsvDialog
         open={open}
         onClose={() => setOpen(false)}
-        description="Creates a new quiz from a spreadsheet. Export from Excel or Google Sheets as CSV."
+        description="Create a quiz from an Excel workbook (.xlsx) or CSV, including multiple languages."
         onFile={(text, name) => importQuizCsvAction(name, text)}
       />
     </>

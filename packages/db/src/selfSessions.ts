@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { AVATARS, NICKNAME_MAX, TRACK_IDS, isScored, type AnswerKey, type PlayerAnswer, type PublicQuestion, type PublicRules, type TrackId } from '@thinkwise/shared';
+import { AVATARS, NICKNAME_MAX, TRACK_IDS, isScored, quizLanguages, translatedQuiz, type AnswerKey, type PlayerAnswer, type PublicQuestion, type PublicRules, type TrackId } from '@thinkwise/shared';
 import type { Db } from './client';
 import { auditLog, gameSessions, selfAttempts, sessionPlayers } from './schema';
 import {
@@ -169,6 +169,8 @@ export async function finalizeSelfSession(db: Db, id: string, now = new Date(), 
       await tx.insert(sessionPlayers).values(
         scored.map(({ a, result }, i) => ({
           sessionId: id,
+          userId: a.userId,
+          language: a.language,
           nickname: a.nickname,
           avatar: a.avatar,
           score: result.score,
@@ -232,6 +234,7 @@ async function sessionByPin(db: Db, pin: string, now: Date) {
 
 export interface SelfInfo {
   title: string;
+  languages: string[];
   state: SelfState;
   opensAt: number | null;
   closesAt: number | null;
@@ -239,15 +242,25 @@ export interface SelfInfo {
   questionCount: number;
   rules: PublicRules;
   serverNow: number;
+  /** The signed-in participant's own attempt, if they already started this quiz. */
+  mine: { language: string; nickname: string } | null;
 }
 
 /** What the join screen shows for a self-paced PIN. */
-export async function selfInfo(db: Db, pin: string, now = new Date()): Promise<SelfInfo | null> {
+export async function selfInfo(db: Db, pin: string, now = new Date(), userId?: string): Promise<SelfInfo | null> {
   const s = await sessionByPin(db, pin, now);
   if (!s) return null;
   const quiz = s.quiz as SelfQuiz;
+  const [mine] = userId
+    ? await db
+        .select({ language: selfAttempts.language, nickname: selfAttempts.nickname })
+        .from(selfAttempts)
+        .where(and(eq(selfAttempts.sessionId, s.id), eq(selfAttempts.userId, userId)))
+        .limit(1)
+    : [];
   return {
     title: s.title,
+    languages: quizLanguages(quiz),
     state: stateOf(s, now),
     opensAt: s.opensAt?.getTime() ?? null,
     closesAt: s.closesAt?.getTime() ?? null,
@@ -255,28 +268,66 @@ export async function selfInfo(db: Db, pin: string, now = new Date()): Promise<S
     questionCount: quiz.questions.length,
     rules: publicRules(quiz),
     serverNow: now.getTime(),
+    mine: mine ?? null,
   };
 }
 
 export type JoinSelfResult = { ok: true; token: string } | { ok: false; reason: 'not_found' | 'upcoming' | 'closed' | 'name_taken' | 'invalid' };
 
-/** Starts a participant's attempt; their personal clock starts now. */
-export async function joinSelf(db: Db, pin: string, nickname: string, avatar: string, now = new Date()): Promise<JoinSelfResult> {
-  const name = nickname.trim().replace(/\s+/g, ' ');
-  if (!name || name.length > NICKNAME_MAX || !(AVATARS as readonly string[]).includes(avatar)) return { ok: false, reason: 'invalid' };
+/**
+ * Starts a signed-in participant's attempt; their personal clock starts now. Each account gets one
+ * attempt per session, in one language: joining again (on any device, in any language) resumes it.
+ */
+export async function joinSelf(
+  db: Db,
+  account: { userId: string; language: string },
+  pin: string,
+  nickname: string,
+  avatar: string,
+  now = new Date(),
+): Promise<JoinSelfResult> {
   const s = await sessionByPin(db, pin, now);
   if (!s) return { ok: false, reason: 'not_found' };
+  const resumed = await resumeSelf(db, account.userId, s.id);
+  if (resumed) return { ok: true, token: resumed };
+  const name = nickname.trim().replace(/\s+/g, ' ');
+  if (!name || name.length > NICKNAME_MAX || !(AVATARS as readonly string[]).includes(avatar)) return { ok: false, reason: 'invalid' };
+  const quiz = s.quiz as SelfQuiz;
+  const languages = quizLanguages(quiz);
+  if (languages.length ? !languages.includes(account.language) : account.language !== '') return { ok: false, reason: 'invalid' };
   const state = stateOf(s, now);
   if (state !== 'open') return { ok: false, reason: state };
   const token = randomBytes(24).toString('base64url');
-  const quiz = s.quiz as SelfQuiz;
   const layout = extrasOf(s.quiz).shuffleEach ? makeLayout(quiz) : null;
   const [row] = await db
     .insert(selfAttempts)
-    .values({ sessionId: s.id, tokenHash: hashToken(token), nickname: name, avatar, startedAt: now, layout })
+    .values({
+      sessionId: s.id,
+      tokenHash: hashToken(token),
+      userId: account.userId,
+      language: account.language,
+      nickname: name,
+      avatar,
+      startedAt: now,
+      layout,
+    })
     .onConflictDoNothing()
     .returning({ id: selfAttempts.id });
-  return row ? { ok: true, token } : { ok: false, reason: 'name_taken' };
+  if (row) return { ok: true, token };
+  // Lost a race with this account's own join on another device, or the nickname is taken.
+  const raced = await resumeSelf(db, account.userId, s.id);
+  return raced ? { ok: true, token: raced } : { ok: false, reason: 'name_taken' };
+}
+
+/** Issues a new device token for the account's attempt, keeping its language, answers and deadline. */
+async function resumeSelf(db: Db, userId: string, sessionId: string) {
+  const token = randomBytes(24).toString('base64url');
+  const [row] = await db
+    .update(selfAttempts)
+    .set({ tokenHash: hashToken(token) })
+    .where(and(eq(selfAttempts.userId, userId), eq(selfAttempts.sessionId, sessionId)))
+    .returning({ id: selfAttempts.id });
+  return row ? token : null;
 }
 
 async function attemptByToken(db: Db, token: string) {
@@ -334,6 +385,7 @@ export interface SelfReviewItem {
 
 export interface SelfPlayerState {
   title: string;
+  language: string;
   rules: PublicRules;
   track: TrackId | null;
   state: SelfState;
@@ -360,7 +412,7 @@ export async function selfPlayerState(db: Db, token: string, now = new Date()): 
   const row = await loadAttempt(db, token, now);
   if (!row) return null;
   const { attempt, session } = row;
-  const quiz = session.quiz as SelfQuiz;
+  const quiz = translatedQuiz(session.quiz as SelfQuiz, attempt.language);
   const view = new LayoutView(readLayout(attempt.layout, quiz.questions.length), quiz);
   const entries = attempt.answers as SelfEntries;
   // Keyed by the position this participant sees.
@@ -406,6 +458,7 @@ export async function selfPlayerState(db: Db, token: string, now = new Date()): 
   }
   return {
     title: session.title,
+    language: attempt.language,
     rules: publicRules(quiz),
     track: extrasOf(session.quiz).soundtrack ?? null,
     state,
@@ -427,7 +480,7 @@ export async function selfPlayerState(db: Db, token: string, now = new Date()): 
 export type SelfActionResult = { ok: true } | { ok: false; reason: 'not_found' | 'locked' | 'invalid' };
 
 function viewOf(row: Loaded) {
-  const quiz = row.session.quiz as SelfQuiz;
+  const quiz = translatedQuiz(row.session.quiz as SelfQuiz, row.attempt.language);
   return { quiz, view: new LayoutView(readLayout(row.attempt.layout, quiz.questions.length), quiz) };
 }
 

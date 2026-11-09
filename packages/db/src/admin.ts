@@ -19,17 +19,28 @@ export interface AdminUserRow {
   id: string;
   name: string;
   email: string;
+  phone: string | null;
+  address: string | null;
   canHost: boolean;
   siteAdmin: boolean;
   createdAt: number;
 }
 
+/** Includes contact details, so only call this for a site admin. */
 export async function listUsersForAdmin(db: Db, search = '', limit = 200): Promise<AdminUserRow[]> {
   const q = search.trim().slice(0, 100).replace(/[\\%_]/g, '\\$&');
   const rows = await db
-    .select({ id: users.id, name: users.name, email: users.email, canHost: users.canHost, createdAt: users.createdAt })
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      phone: users.phone,
+      address: users.address,
+      canHost: users.canHost,
+      createdAt: users.createdAt,
+    })
     .from(users)
-    .where(q ? or(ilike(users.email, `%${q}%`), ilike(users.name, `%${q}%`)) : undefined)
+    .where(q ? or(ilike(users.email, `%${q}%`), ilike(users.name, `%${q}%`), ilike(users.phone, `%${q}%`)) : undefined)
     .orderBy(desc(users.canHost), desc(users.createdAt))
     .limit(limit);
   return rows

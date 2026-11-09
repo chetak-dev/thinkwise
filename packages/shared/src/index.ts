@@ -5,6 +5,7 @@ export * from './quiz';
 export * from './csv';
 export * from './results';
 export * from './feedback';
+export * from './multilingual';
 
 /** The parts of a quiz's rules that change what screens show. */
 export type PublicRules = Pick<
@@ -50,8 +51,20 @@ const Nickname = z
   .max(NICKNAME_MAX)
   .regex(/^[\p{L}\p{M}\p{N} _.'-]+$/u);
 
+export const ParticipantTicket = z.object({
+  gameId: z.uuid(),
+  attemptId: z.uuid(),
+  userId: z.uuid(),
+  nickname: Nickname,
+  avatar: z.enum(AVATARS),
+  language: z.string().max(40),
+  expiresAt: z.number().int(),
+});
+export type ParticipantTicket = z.infer<typeof ParticipantTicket>;
+/** A ParticipantTicket signed by the web app (base64url payload + HMAC). */
+const SignedTicket = z.string().min(10).max(2048);
+
 export const ClientMessage = z.discriminatedUnion('t', [
-  z.object({ t: z.literal('host:create') }),
   z.object({ t: z.literal('host:resume'), gameId: Token, hostToken: Token }),
   z.object({ t: z.literal('screen:join'), gameId: Token, screenKey: Token }),
   z.object({ t: z.literal('host:lock'), locked: z.boolean() }),
@@ -77,8 +90,9 @@ export const ClientMessage = z.discriminatedUnion('t', [
   z.object({ t: z.literal('pin:check'), pin: Pin }),
   /** Self-paced: move on to the next question after seeing the result. */
   z.object({ t: z.literal('player:next') }),
-  z.object({ t: z.literal('player:join'), pin: Pin, nickname: Nickname, avatar: z.enum(AVATARS) }),
-  z.object({ t: z.literal('player:resume'), pin: Pin, playerToken: Token }),
+  /** Nickname, avatar and question language come from the signed ticket. */
+  z.object({ t: z.literal('player:join'), pin: Pin, ticket: SignedTicket }),
+  z.object({ t: z.literal('player:resume'), pin: Pin, playerToken: Token, ticket: SignedTicket }),
   z.object({
     t: z.literal('player:answer'),
     index: z.number().int().min(0).max(500),
@@ -280,3 +294,4 @@ export type ServerMessage =
 export const CLOSE_KICKED = 4001;
 /** Close code for a socket superseded by a newer connection from the same player. */
 export const CLOSE_REPLACED = 4002;
+export * from './sample';

@@ -1,8 +1,8 @@
 import { and, desc, eq, gt, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import type { GameResults, SessionStatus } from '@thinkwise/shared';
+import type { GameResults, PlayableQuiz, SessionStatus } from '@thinkwise/shared';
 import type { Db } from './client';
-import { auditLog, gameSessions, quizzes, sessionPlayers } from './schema';
+import { auditLog, gameSessions, liveAttempts, quizzes, sessionPlayers } from './schema';
 import { finalizeDueSelfSessions } from './selfSessions';
 
 const SessionId = z.uuid();
@@ -57,6 +57,7 @@ export async function createGameSession(
     mode?: 'live' | 'self';
     eventId?: string | null;
     hostToken?: string;
+    quiz?: PlayableQuiz;
   },
 ) {
   await db.insert(gameSessions).values({
@@ -70,6 +71,7 @@ export async function createGameSession(
     pin: game.pin,
     questionCount: game.questionCount,
     mode: game.mode ?? 'live',
+    quiz: game.quiz,
   });
   await db.insert(auditLog).values({ orgId: host.orgId, userId: host.id, action: 'session.create', meta: { sessionId: game.gameId } });
 }
@@ -91,8 +93,12 @@ export async function recordResults(db: Db, results: GameResults) {
       .returning({ id: gameSessions.id });
     if (!row) return false;
     if (results.players.length) {
+      const attempts = await tx.select().from(liveAttempts).where(eq(liveAttempts.sessionId, results.gameId));
+      const byId = new Map(attempts.map((a) => [a.id, a]));
       await tx.insert(sessionPlayers).values(
         results.players.map((p) => ({
+          userId: p.attemptId ? byId.get(p.attemptId)?.userId : undefined,
+          language: p.attemptId ? byId.get(p.attemptId)?.language ?? '' : '',
           sessionId: results.gameId,
           nickname: p.nickname,
           avatar: p.avatar,

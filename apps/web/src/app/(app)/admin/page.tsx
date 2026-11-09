@@ -13,6 +13,8 @@ const PAGE = 100;
 
 const LABELS: Record<string, string> = {
   'auth.register': 'Created an account',
+  'profile.complete': 'Completed their profile',
+  'profile.update': 'Updated their profile',
   'admin.grant': 'Made an admin',
   'admin.revoke': 'Removed an admin',
   'quiz.create': 'Created a quiz',
@@ -76,12 +78,12 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           </p>
           <form className="flex max-w-md gap-2" role="search">
             <label className="relative flex-1">
-              <span className="sr-only">Search by name or email</span>
+              <span className="sr-only">Search by name, email or phone</span>
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
               <input
                 name="q"
                 defaultValue={String(q)}
-                placeholder="Search by name or email"
+                placeholder="Search by name, email or phone"
                 className="h-10 w-full rounded-xl border border-app bg-surface pl-9 pr-3 text-sm"
               />
             </label>

@@ -43,7 +43,7 @@ export function LoginForm({ next }: { next: string }) {
       </button>
       <p className="text-center text-sm text-muted">
         New to ThinkWise?{' '}
-        <Link href="/register" className="font-semibold text-nova-600 hover:underline dark:text-nova-300">
+        <Link href={next === '/dashboard' ? '/register' : `/register?next=${encodeURIComponent(next)}`} className="font-semibold text-nova-600 hover:underline dark:text-nova-300">
           Create a free account
         </Link>
       </p>

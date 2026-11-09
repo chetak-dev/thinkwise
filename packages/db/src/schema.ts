@@ -23,6 +23,9 @@ export const users = pgTable('users', {
   canHost: boolean('can_host').notNull().default(false),
   orgId: uuid('org_id').references(() => organisations.id, { onDelete: 'set null' }),
   locale: text('locale').notNull().default('en'),
+  /** Contact details asked for once after sign-in; only the person and site admins see them. */
+  phone: text('phone'),
+  address: text('address'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -192,6 +195,8 @@ export const selfAttempts = pgTable(
       .references(() => gameSessions.id, { onDelete: 'cascade' }),
     /** sha256 of the participant's secret token, kept on their device. */
     tokenHash: text('token_hash').notNull().unique(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    language: text('language').notNull().default(''),
     nickname: text('nickname').notNull(),
     avatar: text('avatar').notNull(),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
@@ -208,6 +213,7 @@ export const selfAttempts = pgTable(
   (t) => [
     index('self_attempts_session_idx').on(t.sessionId),
     uniqueIndex('self_attempts_nickname_idx').on(t.sessionId, sql`lower(${t.nickname})`),
+    uniqueIndex('self_attempts_user_idx').on(t.sessionId, t.userId),
   ],
 );
 
@@ -218,6 +224,8 @@ export const sessionPlayers = pgTable(
     sessionId: uuid('session_id')
       .notNull()
       .references(() => gameSessions.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    language: text('language').notNull().default(''),
     nickname: text('nickname').notNull(),
     avatar: text('avatar').notNull(),
     score: integer('score').notNull(),
@@ -228,6 +236,20 @@ export const sessionPlayers = pgTable(
   },
   (t) => [index('session_players_session_idx').on(t.sessionId)],
 );
+
+export const liveAttempts = pgTable('live_attempts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull().references(() => gameSessions.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  language: text('language').notNull().default(''),
+  nickname: text('nickname').notNull(),
+  avatar: text('avatar').notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('live_attempts_user_idx').on(t.sessionId, t.userId),
+  uniqueIndex('live_attempts_nickname_idx').on(t.sessionId, sql`lower(${t.nickname})`),
+  index('live_attempts_history_idx').on(t.userId, t.startedAt),
+]);
 
 /** One participant's answers to an event's feedback form in one launch. */
 export const feedbackSubmissions = pgTable(

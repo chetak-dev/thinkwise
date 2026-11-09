@@ -11,6 +11,8 @@ const auth = await import('../src/auth');
 const s = await import('../src/sessions');
 const self = await import('../src/selfSessions');
 const logic = await import('../src/selfPaced');
+const part = await import('../src/participation');
+const profile = await import('../src/profile');
 
 const handle = openDb();
 const db = handle.db;
@@ -25,6 +27,15 @@ before(async () => {
   host = a.user;
   other = b.user;
 });
+
+let seq = 0;
+/** A fresh signed-in participant answering in the given language. */
+async function player(language = '') {
+  const n = ++seq;
+  const r = await auth.registerUser(db, { name: `Player ${n}`, email: `player${n}@example.com`, password: 'player-pass-1' });
+  if (!r.ok) throw new Error('register failed');
+  return { userId: r.user.id, language };
+}
 
 const quiz = PlayableQuiz.parse({
   title: 'Self quiz',
@@ -71,11 +82,12 @@ test('participants join with the 7-digit PIN, save, change and submit; results w
   assert.equal(info?.questionCount, 4);
   assert.equal((await self.selfInfo(db, pin, at(-MIN)))?.state, 'upcoming');
 
-  const joined = await self.joinSelf(db, pin, 'Arjun', '🦊', at(MIN));
+  const arjun = await player();
+  const joined = await self.joinSelf(db, arjun, pin, 'Arjun', '🦊', at(MIN));
   assert.ok(joined.ok);
   const token = joined.token;
-  assert.deepEqual(await self.joinSelf(db, pin, ' arjun ', '🦊', at(MIN)), { ok: false, reason: 'name_taken' });
-  assert.deepEqual(await self.joinSelf(db, pin, 'Bad avatar', 'x', at(MIN)), { ok: false, reason: 'invalid' });
+  assert.deepEqual(await self.joinSelf(db, await player(), pin, ' arjun ', '🦊', at(MIN)), { ok: false, reason: 'name_taken' });
+  assert.deepEqual(await self.joinSelf(db, await player(), pin, 'Bad avatar', 'x', at(MIN)), { ok: false, reason: 'invalid' });
 
   assert.ok((await self.openSelfQuestion(db, token, 0, at(MIN))).ok);
   assert.ok((await self.saveSelfAnswer(db, token, 0, { choice: 0 }, at(MIN + 1000))).ok);
@@ -106,8 +118,8 @@ test('participants join with the 7-digit PIN, save, change and submit; results w
 
 test('time running out submits the attempt; closing finalises results into the report', async () => {
   const { id, pin } = await open(5 * MIN, 30 * MIN);
-  const a = await self.joinSelf(db, pin, 'Asha', '🐼', at(0));
-  const b = await self.joinSelf(db, pin, 'Bala', '🦁', at(0));
+  const a = await self.joinSelf(db, await player(), pin, 'Asha', '🐼', at(0));
+  const b = await self.joinSelf(db, await player(), pin, 'Bala', '🦁', at(0));
   assert.ok(a.ok && b.ok);
   await self.saveSelfAnswer(db, a.token, 0, { choice: 1 }, at(1000));
   await self.saveSelfAnswer(db, a.token, 3, { choice: 0 }, at(2000));
@@ -126,7 +138,7 @@ test('time running out submits the attempt; closing finalises results into the r
   assert.equal((await self.updateSelfSettings(db, other.id, id, { title: 'Mine' }, at(7 * MIN))).ok, false, 'only the host');
   assert.ok((await self.updateSelfSettings(db, host.id, id, { closesAt: at(8 * MIN), title: '  Renamed   quiz ' }, at(7 * MIN))).ok);
   assert.equal((await self.selfInfo(db, pin, at(9 * MIN)))?.state, 'closed', 'closes on its own once the time passes');
-  assert.deepEqual(await self.joinSelf(db, pin, 'Late', '🦊', at(9 * MIN)), { ok: false, reason: 'closed' });
+  assert.deepEqual(await self.joinSelf(db, await player(), pin, 'Late', '🦊', at(9 * MIN)), { ok: false, reason: 'closed' });
 
   const report = await s.getSessionReport(db, host.id, id);
   assert.equal(report?.status, 'ended');
@@ -173,7 +185,7 @@ test('shuffle for each participant: positions map back to the quiz, scores are u
   const { id, pin } = await self.createSelfSession(db, host, {
     quizId: null, title: 'Shuffled', quiz: many, opensAt: T0, closesAt: at(60 * MIN), timeLimitMs: 10 * MIN, shuffleEach: true,
   });
-  const j = await self.joinSelf(db, pin, 'Kiran', '🦊', at(MIN));
+  const j = await self.joinSelf(db, await player(), pin, 'Kiran', '🦊', at(MIN));
   assert.ok(j.ok);
   const st = await self.selfPlayerState(db, j.token, at(MIN));
   assert.ok(st);
@@ -212,4 +224,70 @@ test('a host can close a session early; an empty session counts as abandoned', a
   assert.equal(await self.closeSelfSession(db, host.id, id, at(MIN)), false, 'only once');
   const report = await s.getSessionReport(db, host.id, id);
   assert.equal(report?.status, 'abandoned');
+});
+
+test('a signed-in participant gets one attempt in one language; joining again resumes it', async () => {
+  const bilingual = PlayableQuiz.parse({
+    title: 'Bilingual',
+    questions: [{
+      type: 'mc', text: 'What is 2 + 2?', options: ['3', '4'], correct: [1], timeLimitMs: 20_000, points: 1000,
+      translations: {
+        English: { text: 'What is 2 + 2?', options: ['3', '4'] },
+        Hindi: { text: '2 + 2 कितना है?', options: ['३', '४'] },
+      },
+    }],
+    rules: { scoring: 'accuracy', streakBonus: false },
+  });
+  const { pin } = await self.createSelfSession(db, host, {
+    quizId: null, title: 'Bilingual', quiz: bilingual, opensAt: T0, closesAt: at(60 * MIN), timeLimitMs: 10 * MIN,
+  });
+  const meena = await player('Hindi');
+  assert.deepEqual((await self.selfInfo(db, pin, at(MIN)))?.languages, ['English', 'Hindi']);
+  assert.equal((await self.selfInfo(db, pin, at(MIN), meena.userId))?.mine, null);
+  assert.deepEqual(await self.joinSelf(db, { ...meena, language: 'French' }, pin, 'Meena', '🦊', at(MIN)), { ok: false, reason: 'invalid' });
+  assert.deepEqual(await self.joinSelf(db, { ...meena, language: '' }, pin, 'Meena', '🦊', at(MIN)), { ok: false, reason: 'invalid' });
+
+  const first = await self.joinSelf(db, meena, pin, 'Meena', '🦊', at(MIN));
+  assert.ok(first.ok);
+  const st = await self.selfPlayerState(db, first.token, at(MIN));
+  assert.equal(st?.questions[0]?.text, '2 + 2 कितना है?', 'only their language is shown');
+  assert.ok((await self.saveSelfAnswer(db, first.token, 0, { choice: 1 }, at(MIN + 1000))).ok);
+  assert.ok(await part.selfTokenOwner(db, meena.userId, first.token));
+  assert.equal(await part.selfTokenOwner(db, host.id, first.token), false);
+
+  // Another device, another language: it is the same attempt, still in Hindi, with the saved answer.
+  const again = await self.joinSelf(db, { ...meena, language: 'English' }, pin, 'Other name', '🐼', at(2 * MIN));
+  assert.ok(again.ok);
+  assert.equal(await self.selfPlayerState(db, first.token, at(2 * MIN)), null, 'the old device token is replaced');
+  const resumed = await self.selfPlayerState(db, again.token, at(2 * MIN));
+  assert.equal(resumed?.questions[0]?.text, '2 + 2 कितना है?');
+  assert.deepEqual(resumed?.answers, { 0: { choices: [1] } });
+  assert.deepEqual((await self.selfInfo(db, pin, at(2 * MIN), meena.userId))?.mine, { language: 'Hindi', nickname: 'Meena' });
+  assert.ok((await self.submitSelf(db, again.token, at(3 * MIN))).ok);
+  const after = await self.joinSelf(db, meena, pin, 'Meena', '🦊', at(4 * MIN));
+  assert.ok(after.ok, 'returns to the submitted attempt instead of starting another');
+  assert.equal((await self.selfPlayerState(db, after.token, at(4 * MIN)))?.submitted, true);
+
+  const history = await part.participantHistory(db, meena.userId);
+  assert.equal(history.length, 1);
+  assert.deepEqual([history[0]?.title, history[0]?.mode, history[0]?.language, history[0]?.status, history[0]?.score],
+    ['Bilingual', 'self', 'Hindi', 'Submitted', 1000]);
+  assert.deepEqual(await part.participantHistory(db, host.id), [], 'only their own attempts');
+});
+
+test('participants complete their profile once: name, phone and address', async () => {
+  const r = await auth.registerUser(db, { name: 'Gita', email: 'gita@example.com', password: 'gita-pass-1' });
+  assert.ok(r.ok);
+  assert.equal(profile.profileComplete(r.user), false);
+  const bad = await profile.updateProfile(db, r.user, { name: ' ', phone: '12', address: 'short' });
+  assert.equal(bad.ok, false);
+  if (!bad.ok) assert.deepEqual(Object.keys(bad.fieldErrors).sort(), ['address', 'name', 'phone']);
+  assert.equal((await profile.updateProfile(db, r.user, { name: 'Gita', phone: 'call me', address: '12 Main Road, Bhubaneswar' })).ok, false);
+  assert.ok((await profile.updateProfile(db, r.user, { name: ' Gita Das ', phone: '+91 98765-43210', address: ' 12 Main Road, Bhubaneswar ' })).ok);
+  const signedIn = await auth.authenticate(db, 'gita@example.com', 'gita-pass-1');
+  assert.ok(signedIn);
+  if (signedIn) {
+    assert.equal(profile.profileComplete(signedIn), true);
+    assert.deepEqual([signedIn.name, signedIn.phone, signedIn.address], ['Gita Das', '+91 98765-43210', '12 Main Road, Bhubaneswar']);
+  }
 });

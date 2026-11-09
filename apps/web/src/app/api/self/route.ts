@@ -6,8 +6,10 @@ import {
   saveSelfAnswer,
   selfInfo,
   selfPlayerState,
+  selfTokenOwner,
   submitSelf,
 } from '@thinkwise/db';
+import { getCurrentUser, getParticipant } from '@/lib/session';
 
 const MAX_BODY = 16 * 1024;
 const WINDOW_MS = 60_000;
@@ -31,17 +33,21 @@ function limited(request: Request) {
 const NO_STORE = { 'cache-control': 'no-store' };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: NO_STORE });
 
-/** Public: what a self-paced PIN leads to (title, window, time limit). */
+/** Public: what a self-paced PIN leads to (title, window, time limit, languages), plus the visitor's own attempt. */
 export async function GET(request: Request) {
   if (limited(request)) return json({ error: 'rate_limited' }, 429);
   const pin = new URL(request.url).searchParams.get('pin') ?? '';
-  const info = await selfInfo(getDb(), pin);
-  return info ? json({ info }) : json({ error: 'not_found' }, 404);
+  const user = await getCurrentUser();
+  const info = await selfInfo(getDb(), pin, new Date(), user?.id);
+  return info ? json({ info, signedIn: !!user }) : json({ error: 'not_found' }, 404);
 }
 
-type Body = { action?: unknown; pin?: unknown; nickname?: unknown; avatar?: unknown; token?: unknown; index?: unknown; answer?: unknown };
+type Body = { action?: unknown; pin?: unknown; nickname?: unknown; avatar?: unknown; language?: unknown; token?: unknown; index?: unknown; answer?: unknown };
 
-/** Public: a participant's actions in a self-paced session. The token in the body identifies their attempt. */
+/**
+ * A signed-in participant's actions in a self-paced session. The token in the body identifies their
+ * attempt and must belong to the signed-in account.
+ */
 export async function POST(request: Request) {
   if (limited(request)) return json({ error: 'rate_limited' }, 429);
   const text = await request.text();
@@ -53,8 +59,11 @@ export async function POST(request: Request) {
     return json({ error: 'bad_request' }, 400);
   }
   if (typeof body !== 'object' || body === null) return json({ error: 'bad_request' }, 400);
+  const who = await getParticipant();
+  if (!who.ok) return json({ error: who.error }, who.status);
   const db = getDb();
   const token = typeof body.token === 'string' ? body.token : '';
+  if (body.action !== 'join' && !(await selfTokenOwner(db, who.user.id, token))) return json({ error: 'not_found' }, 404);
   const index = typeof body.index === 'number' ? body.index : -1;
 
   switch (body.action) {
@@ -62,7 +71,8 @@ export async function POST(request: Request) {
       if (typeof body.pin !== 'string' || typeof body.nickname !== 'string' || typeof body.avatar !== 'string') {
         return json({ error: 'bad_request' }, 400);
       }
-      const result = await joinSelf(db, body.pin, body.nickname, body.avatar);
+      const language = typeof body.language === 'string' ? body.language : '';
+      const result = await joinSelf(db, { userId: who.user.id, language }, body.pin, body.nickname, body.avatar);
       return result.ok ? json({ token: result.token }) : json({ error: result.reason }, result.reason === 'not_found' ? 404 : 409);
     }
     case 'state': {

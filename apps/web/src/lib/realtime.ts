@@ -1,7 +1,7 @@
 import 'server-only';
 
-import { timingSafeEqual } from 'node:crypto';
-import type { GameMode, PlayableQuiz } from '@thinkwise/shared';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { ParticipantTicket, type GameMode, type PlayableQuiz } from '@thinkwise/shared';
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 const REALTIME_HTTP_URL = process.env.REALTIME_HTTP_URL ?? 'http://127.0.0.1:4000';
@@ -45,6 +45,23 @@ export async function createLiveGame(quiz: PlayableQuiz, settings?: StartOptions
 
 export type LivePhase = 'lobby' | 'question' | 'reveal' | 'leaderboard' | 'finished';
 
+export async function liveParticipantInfo(pin: string): Promise<{
+  gameId: string; languages: string[]; phase: LivePhase; locked: boolean;
+} | null> {
+  if (!REALTIME_SECRET) throw new Error('REALTIME_SECRET is not configured');
+  const res = await fetch(`${REALTIME_HTTP_URL}/games/info?pin=${encodeURIComponent(pin)}`, {
+    headers: { authorization: `Bearer ${REALTIME_SECRET}` }, cache: 'no-store', signal: AbortSignal.timeout(10_000),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Game server returned ${res.status}`);
+  return res.json();
+}
+
+export function signParticipantTicket(input: unknown) {
+  if (!REALTIME_SECRET) throw new Error('REALTIME_SECRET is not configured');
+  const payload = Buffer.from(JSON.stringify(ParticipantTicket.parse(input))).toString('base64url');
+  return `${payload}.${createHmac('sha256', REALTIME_SECRET).update(payload).digest('base64url')}`;
+}
 /** Which of these games the game server still holds. Empty when it can't answer quickly: a sleeping server runs no games. */
 export async function liveGameStatus(ids: string[]): Promise<Record<string, { phase: LivePhase; players: number }>> {
   if (!REALTIME_SECRET || ids.length === 0) return {};
