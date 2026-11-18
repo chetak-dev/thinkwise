@@ -197,10 +197,17 @@ export const QuestionTranslation = z.object({
   hint: z.string().max(HINT_MAX).default(''),
   explanation: z.string().max(EXPLANATION_MAX).default(''),
 });
+const DraftQuestionTranslation = QuestionTranslation.extend({
+  text: z.string().max(QUESTION_TEXT_MAX),
+  options: z.array(z.string().max(OPTION_TEXT_MAX)).max(MAX_OPTIONS),
+});
+const languageName = z.string().trim().min(1).max(40).regex(/^[\p{L}\p{M}\p{N} ()-]+$/u);
 export const QuestionTranslations = z.record(
-  z.string().trim().min(1).max(40).regex(/^[\p{L}\p{M}\p{N} ()-]+$/u),
+  languageName,
   QuestionTranslation,
 ).refine((value) => Object.keys(value).length <= 20, 'Use at most 20 languages');
+const DraftQuestionTranslations = z.record(languageName, DraftQuestionTranslation)
+  .refine((value) => Object.keys(value).length <= 20, 'Use at most 20 languages');
 
 /** Languages every question is translated into, alphabetically (jsonb does not keep key order). */
 export function quizLanguages(quiz: { questions: { translations?: z.infer<typeof QuestionTranslations> }[] }): string[] {
@@ -260,7 +267,7 @@ export const DraftQuestion = z.object({
   hint: z.string().max(HINT_MAX).default(''),
   explanation: z.string().max(EXPLANATION_MAX).default(''),
   tags: z.string().max(TAGS_MAX).default(''),
-  translations: QuestionTranslations.optional(),
+  translations: DraftQuestionTranslations.optional(),
 });
 export type DraftQuestion = z.infer<typeof DraftQuestion>;
 
@@ -438,6 +445,8 @@ export function toPlayable(title: string, questions: DraftQuestion[], settings?:
       ...[...languages].filter((l) => !q.translations?.[l]).map((l) => `Add the ${l} translation (reimport the complete sheet)`),
       ...Object.entries(q.translations ?? {}).filter(([, t]) => t.options.length !== q.options.length)
         .map(([l]) => `The ${l} translation must have the same options as the original`),
+      ...Object.entries(q.translations ?? {}).filter(([, t]) => !t.text.trim() || t.options.some((option) => !option.trim()))
+        .map(([l]) => `Complete the ${l} translation`),
     ] }))
     .filter((p) => p.issues.length > 0);
   const titleMissing = !title.trim();

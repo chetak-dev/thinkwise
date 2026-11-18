@@ -1,7 +1,7 @@
 import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { eq } from 'drizzle-orm';
-import { newQuestion, toPlayable } from '@thinkwise/shared';
+import { csvToQuestions, inLanguage, newQuestion, toPlayable } from '@thinkwise/shared';
 
 process.env.PGLITE_DIR = 'memory://';
 delete process.env.DATABASE_URL;
@@ -70,6 +70,31 @@ test('drafts may be incomplete but must keep their shape', async () => {
     q.saveQuiz(db, alice.id, id, { title: 'x', description: '', questions: [{ ...newQuestion('mc', 'd3'), options: ['only one'] }] }),
     'too few options rejected',
   );
+});
+
+test('imported translations can be edited, saved and published', async () => {
+  const csv = 'question_id,language,question,option_a,option_b,option_c,option_d,correct,time,points,explanation\n'
+    + '1,English,Question,Yes,No,,,A,20,1000,Original\n'
+    + '1,Hindi,सवाल,हाँ,नहीं,,,A,20,1000,पहले';
+  const imported = csvToQuestions(csv, () => 'translated');
+  assert.deepEqual(imported.errors, []);
+  const id = await q.createQuiz(db, alice, 'Translations', imported.questions);
+  const question = (await q.getQuiz(db, alice.id, id))!.questions[0]!;
+  question.translations!.Hindi = { ...question.translations!.Hindi!, text: '', options: ['', 'नहीं'] };
+  await q.saveQuiz(db, alice.id, id, { title: 'Translations', description: '', questions: [question] });
+  const draft = (await q.getQuiz(db, alice.id, id))!.questions[0]!;
+  assert.equal(draft.translations!.Hindi!.text, '');
+  assert.equal(toPlayable('Translations', [draft]).ok, false);
+  draft.translations!.Hindi = { ...draft.translations!.Hindi!, text: 'नया सवाल', options: ['जी हाँ', 'नहीं'], explanation: 'नया उत्तर' };
+  await q.saveQuiz(db, alice.id, id, { title: 'Translations', description: '', questions: [draft] });
+  const saved = (await q.getQuiz(db, alice.id, id))!.questions[0]!;
+  assert.deepEqual([inLanguage(saved, 'Hindi').text, inLanguage(saved, 'Hindi').options[0], inLanguage(saved, 'Hindi').explanation],
+    ['नया सवाल', 'जी हाँ', 'नया उत्तर']);
+  assert.equal(inLanguage(saved, 'English').text, 'Question');
+  assert.equal(toPlayable('Translations', [saved]).ok, true);
+  assert.equal((await q.publishQuiz(db, alice, id)).ok, true);
+  const published = await q.getQuiz(db, alice.id, id);
+  assert.equal(published?.status, 'published');
 });
 
 test("one host can never read, change, copy or delete another host's quiz", async () => {

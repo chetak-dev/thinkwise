@@ -234,7 +234,7 @@ export interface SelfLayout {
 export function makeLayout(quiz: SelfQuiz): SelfLayout {
   const o: Record<string, number[]> = {};
   quiz.questions.forEach((q, i) => {
-    if (q.type === 'tf' || q.options.length < 2) return;
+    if (q.options.length < 2) return;
     o[String(i)] = shuffled(q.options.map((_, k) => k));
   });
   return { q: shuffled(quiz.questions.map((_, i) => i)), o };

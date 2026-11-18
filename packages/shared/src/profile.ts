@@ -1,4 +1,5 @@
 export const GENDER_VALUES = ['male', 'female', 'non_binary', 'another_gender', 'prefer_not_to_say'] as const;
+export const SELECTABLE_GENDERS = ['male', 'female'] as const;
 
 export type Gender = (typeof GENDER_VALUES)[number];
 

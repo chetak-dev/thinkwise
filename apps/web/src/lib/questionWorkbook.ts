@@ -37,7 +37,15 @@ export async function readQuestionWorkbook(file: File): Promise<string> {
   }
   if (!sheets.length) throw new Error('This workbook has no questions.');
   const tabs = sheets.filter((s) => isLanguageSheet(s.rows));
-  if (!tabs.length) return toCsv(sheets[0]!.rows);
+  const populated = sheets.filter((s) => s.rows.slice(1).some((row) => row.some((cell) => cell.trim())));
+  if (!tabs.length) {
+    if (populated.length > 1) throw new Error('Multiple tabs need the language-tab columns from the sample Excel file. Nothing was imported.');
+    return toCsv((populated[0] ?? sheets[0])!.rows);
+  }
+  const unrecognized = populated.find((s) => !isLanguageSheet(s.rows));
+  if (unrecognized) {
+    throw new Error(`The ${unrecognized.name} tab does not have the language-tab columns from the sample Excel file. Nothing was imported.`);
+  }
   if (tabs.length > 20) throw new Error('Use at most 20 language tabs.');
   const result = languageSheetsToRows(tabs);
   if ('error' in result) throw new Error(result.error);

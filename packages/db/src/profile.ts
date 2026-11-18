@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { GENDER_VALUES } from '@thinkwise/shared';
+import { GENDER_VALUES, SELECTABLE_GENDERS } from '@thinkwise/shared';
 import type { Db } from './client';
 import { auditLog, users } from './schema';
 import type { PublicUser } from './auth';
@@ -14,7 +14,8 @@ export function phoneForForm(phone: string | null | undefined) {
   return digits.length > PHONE_DIGITS ? digits.slice(-PHONE_DIGITS) : digits;
 }
 
-const GenderInput = z.enum(GENDER_VALUES, { error: 'Please choose your gender or select "Prefer not to say".' });
+const GenderInput = z.enum(SELECTABLE_GENDERS, { error: 'Please choose Male or Female.' });
+const SavedGender = z.enum(GENDER_VALUES);
 
 export const ProfileInput = z.object({
   name: z.string().trim().min(1, 'Please enter your full name.').max(80, 'Use at most 80 characters.'),
@@ -31,9 +32,9 @@ export const ProfileInput = z.object({
 });
 export type ProfileInput = z.input<typeof ProfileInput>;
 
-/** All profile fields need a value; "prefer not to say" is a valid gender choice. */
 export function profileComplete(user: Pick<PublicUser, 'name' | 'phone' | 'address' | 'gender'> | null | undefined) {
-  return !!user && !!user.name?.trim() && !!user.phone?.trim() && !!user.address?.trim() && GenderInput.safeParse(user.gender).success;
+  return !!user && !!user.name?.trim() && !!user.phone?.trim() && !!user.address?.trim() &&
+    (user.gender === null || SavedGender.safeParse(user.gender).success);
 }
 
 export type ProfileResult =

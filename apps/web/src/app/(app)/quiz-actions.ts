@@ -175,7 +175,7 @@ async function startSelf(
   if (limit < SELF_LIMIT_MIN_MS || limit > SELF_LIMIT_MAX_MS) {
     return { ok: false, error: 'The time limit must be between 1 minute and 24 hours.' };
   }
-  const shuffleEach = options?.shuffleEach === true;
+  const shuffleEach = options?.shuffleEach !== false;
   const rules = {
     ...quiz.rules,
     ...(typeof options?.showLeaderboard === 'boolean' ? { showLeaderboard: options.showLeaderboard } : {}),

@@ -1,8 +1,8 @@
 'use client';
 
-import { useActionState } from 'react';
-import { CheckCircle2, Loader2 } from 'lucide-react';
-import { GENDER_LABELS, GENDER_VALUES } from '@thinkwise/shared';
+import { useActionState, useEffect, useState } from 'react';
+import { CheckCircle2, Loader2, Pencil } from 'lucide-react';
+import { GENDER_LABELS, GENDER_VALUES, SELECTABLE_GENDERS } from '@thinkwise/shared';
 import { profileAction, type ProfileFormState } from './actions';
 import { FieldError, INPUT, SUBMIT } from './AuthShell';
 
@@ -13,14 +13,22 @@ export function ProfileForm({
   initial,
   next,
   submitLabel,
+  onSaved,
+  onCancel,
 }: {
   initial: NonNullable<ProfileFormState['values']>;
   next?: string;
   submitLabel: string;
+  onSaved?: (values: NonNullable<ProfileFormState['values']>) => void;
+  onCancel?: () => void;
 }) {
   const [state, action, pending] = useActionState<ProfileFormState | undefined, FormData>(profileAction, undefined);
   const values = state?.values ?? initial;
   const err = (f: Field) => state?.fieldErrors?.[f];
+
+  useEffect(() => {
+    if (state?.saved && state.values) onSaved?.(state.values);
+  }, [state, onSaved]);
 
   // Keep entered values when a server action returns validation errors.
   return (
@@ -51,13 +59,13 @@ export function ProfileForm({
           id="gender"
           name="gender"
           required
-          defaultValue={values.gender}
+          defaultValue={SELECTABLE_GENDERS.some((gender) => gender === values.gender) ? values.gender : ''}
           aria-invalid={!!err('gender')}
           aria-describedby={err('gender') ? 'gender-error' : undefined}
           className={INPUT}
         >
           <option value="">Choose an option</option>
-          {GENDER_VALUES.map((gender) => (
+          {SELECTABLE_GENDERS.map((gender) => (
             <option key={gender} value={gender}>{GENDER_LABELS[gender]}</option>
           ))}
         </select>
@@ -132,6 +140,50 @@ export function ProfileForm({
         {pending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
         {submitLabel}
       </button>
+      {onCancel && (
+        <button type="button" disabled={pending} onClick={onCancel} className="w-full rounded-xl border border-app px-4 py-2.5 text-sm font-semibold hover:bg-surface-2 disabled:opacity-50">
+          Cancel
+        </button>
+      )}
     </form>
+  );
+}
+
+export function ProfileDetails({ initial }: { initial: NonNullable<ProfileFormState['values']> }) {
+  const [values, setValues] = useState(initial);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  if (editing) {
+    return <ProfileForm initial={values} submitLabel="Save changes" onCancel={() => setEditing(false)} onSaved={(updated) => {
+      setValues(updated);
+      setSaved(true);
+      setEditing(false);
+    }} />;
+  }
+
+  const gender = GENDER_VALUES.find((value) => value === values.gender);
+  const details = [
+    ['Full name', values.name],
+    ['Gender', gender ? GENDER_LABELS[gender] : 'Not provided'],
+    ['Phone number', values.phone],
+    ['Address', values.address],
+  ];
+  return (
+    <div className="space-y-5">
+      <dl className="space-y-4">
+        {details.map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-sm font-semibold text-muted">{label}</dt>
+            <dd className="mt-1 whitespace-pre-wrap break-words text-sm text-app">{value || 'Not provided'}</dd>
+          </div>
+        ))}
+      </dl>
+      {saved && <p role="status" className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Your details are saved.</p>}
+      <button type="button" onClick={() => { setSaved(false); setEditing(true); }} className="inline-flex items-center gap-2 rounded-xl border border-app px-4 py-2 text-sm font-semibold hover:bg-surface-2">
+        <Pencil className="size-4" aria-hidden="true" />
+        Edit profile
+      </button>
+    </div>
   );
 }

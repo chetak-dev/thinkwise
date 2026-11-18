@@ -1,7 +1,7 @@
 import { before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { eq } from 'drizzle-orm';
-import { GENDER_VALUES, PlayableQuiz } from '@thinkwise/shared';
+import { SELECTABLE_GENDERS, PlayableQuiz } from '@thinkwise/shared';
 
 process.env.PGLITE_DIR = 'memory://';
 delete process.env.DATABASE_URL;
@@ -193,6 +193,20 @@ test('shuffle for each participant: positions map back to the quiz, scores are u
   assert.ok(j.ok);
   const st = await self.selfPlayerState(db, j.token, at(MIN));
   assert.ok(st);
+  const otherPlayer = await player();
+  const otherJoin = await self.joinSelf(db, otherPlayer, pin, 'Nisha', '🐼', at(MIN));
+  assert.ok(otherJoin.ok);
+  const otherState = await self.selfPlayerState(db, otherJoin.token, at(MIN));
+  assert.ok(otherState);
+  assert.notDeepEqual(
+    st.questions.map((question) => [question.text, question.options]),
+    otherState.questions.map((question) => [question.text, question.options]),
+    'participants get independently shuffled questions and options',
+  );
+  const resumed = await self.joinSelf(db, otherPlayer, pin, 'Nisha', '🐼', at(MIN + 500));
+  assert.ok(resumed.ok);
+  assert.deepEqual((await self.selfPlayerState(db, resumed.token, at(MIN + 500)))?.questions, otherState.questions,
+    'resuming preserves the participant order');
   // Answer every question correctly by finding the right option text in the shown order.
   for (const [pos, q] of st.questions.entries()) {
     const qi = Number(q.text.slice(1, -1));
@@ -295,29 +309,47 @@ test('participants must choose a valid gender to complete or update their profil
   }
   assert.equal(profile.phoneForForm('+91 98765 43210'), '9876543210');
   assert.equal(profile.phoneForForm(null), '');
-  for (const gender of GENDER_VALUES) assert.ok(profile.ProfileInput.safeParse({ ...details, gender }).success, gender);
+  for (const gender of SELECTABLE_GENDERS) assert.ok(profile.ProfileInput.safeParse({ ...details, gender }).success, gender);
+  for (const gender of ['non_binary', 'another_gender', 'prefer_not_to_say']) {
+    assert.equal(profile.ProfileInput.safeParse({ ...details, gender }).success, false, gender);
+  }
 
-  // An existing profile keeps its details but needs a gender choice after migration.
   await db.update(users).set({ phone: details.phone, address: details.address }).where(eq(users.id, r.user.id));
   const legacy = await auth.authenticate(db, 'gita@example.com', 'gita-pass-1');
   assert.ok(legacy);
   assert.deepEqual([legacy.name, legacy.phone, legacy.address, legacy.gender], [details.name, details.phone, details.address, null]);
-  assert.equal(profile.profileComplete(legacy), false);
+  assert.equal(profile.profileComplete(legacy), true, 'a completed legacy profile does not need to be filled again');
+  assert.equal(profile.profileComplete({ ...legacy, phone: null }), false);
+  const legacySession = await auth.createSession(db, legacy.id);
+  assert.equal(profile.profileComplete(await auth.getSessionUser(db, legacySession.token)), true);
 
   assert.ok((await profile.updateProfile(db, legacy, {
-    name: ' Gita Das ', phone: ` ${details.phone} `, address: ` ${details.address} `, gender: 'prefer_not_to_say',
+    name: ' Gita Das ', phone: ` ${details.phone} `, address: ` ${details.address} `, gender: 'female',
   })).ok);
   const signedIn = await auth.authenticate(db, 'gita@example.com', 'gita-pass-1');
   assert.ok(signedIn);
-  assert.equal(profile.profileComplete(signedIn), true, 'prefer not to say completes the profile');
+  assert.equal(profile.profileComplete(signedIn), true, 'a valid choice completes the profile');
   assert.deepEqual([signedIn.name, signedIn.phone, signedIn.address, signedIn.gender],
-    ['Gita Das', details.phone, details.address, 'prefer_not_to_say']);
+    ['Gita Das', details.phone, details.address, 'female']);
 
   const { token } = await auth.createSession(db, signedIn.id);
-  assert.equal((await auth.getSessionUser(db, token))?.gender, 'prefer_not_to_say');
+  assert.equal((await auth.getSessionUser(db, token))?.gender, 'female');
   const google = await auth.signInWithGoogle(db, { sub: 'google-gita', email: 'gita@example.com', emailVerified: true, name: 'Gita' });
-  assert.equal(google?.gender, 'prefer_not_to_say', 'linking Google keeps the profile');
+  assert.equal(google?.gender, 'female', 'linking Google keeps the profile');
 
-  assert.ok((await profile.updateProfile(db, signedIn, { ...details, gender: 'non_binary' })).ok);
-  assert.equal((await auth.getSessionUser(db, token))?.gender, 'non_binary', 'an updated choice is saved');
+  await db.update(users).set({ gender: 'prefer_not_to_say' }).where(eq(users.id, signedIn.id));
+  const savedLegacy = await auth.getSessionUser(db, token);
+  assert.equal(savedLegacy?.gender, 'prefer_not_to_say');
+  assert.equal(profile.profileComplete(savedLegacy), true, 'existing choices remain complete');
+  assert.ok((await profile.updateProfile(db, savedLegacy!, { ...details, gender: 'male' })).ok);
+  assert.equal((await auth.getSessionUser(db, token))?.gender, 'male', 'an updated choice is saved');
+});
+
+test('true or false choices are shuffled and mapped back for scoring', () => {
+  const single = PlayableQuiz.parse({ ...quiz, questions: [quiz.questions[3]] });
+  assert.deepEqual([...logic.makeLayout(single).o['0']!].sort(), [0, 1]);
+  const view = new logic.LayoutView({ q: [0], o: { '0': [1, 0] } }, single);
+  assert.deepEqual(view.question(0).options, ['False', 'True']);
+  assert.equal(view.toQuizInput(0, { choice: 1 }).choice, 0);
+  assert.deepEqual(view.shownCorrect(0), [1]);
 });

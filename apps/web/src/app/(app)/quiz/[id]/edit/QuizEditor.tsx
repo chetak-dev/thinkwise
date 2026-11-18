@@ -141,6 +141,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
   }));
   const { title, questions } = history.present;
   const [selectedId, setSelectedId] = useState(() => questions[0]!.id);
+  const [selectedLanguage, setSelectedLanguage] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -275,9 +276,19 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
     questions.findIndex((q) => q.id === selectedId),
   );
   const current = questions[index]!;
+  const language = current.translations?.[selectedLanguage] ? selectedLanguage : '';
+  const wording = language ? current.translations![language]! : current;
+  const languages = Object.keys(current.translations ?? {}).sort((a, b) => a.localeCompare(b));
 
   const updateCurrent = (patch: Partial<DraftQuestion>, groupKey: string | null = null) =>
     setQuestions((qs) => qs.map((q) => (q.id === current.id ? { ...q, ...patch } : q)), groupKey);
+
+  const updateWording = (patch: Partial<Pick<DraftQuestion, 'text' | 'options' | 'hint' | 'explanation'>>, groupKey: string) => {
+    if (!language) return updateCurrent(patch, `${groupKey}:default`);
+    setQuestions((qs) => qs.map((q) => q.id === current.id && q.translations?.[language]
+      ? { ...q, translations: { ...q.translations, [language]: { ...q.translations[language], ...patch } } }
+      : q), `${groupKey}:${language}`);
+  };
 
   const move = (from: number, to: number) =>
     setQuestions((qs) => {
@@ -330,18 +341,31 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
   };
 
   const setOption = (i: number, value: string) =>
-    updateCurrent({ options: current.options.map((o, j) => (j === i ? value : o)) }, `option:${current.id}:${i}`);
+    updateWording({ options: wording.options.map((o, j) => (j === i ? value : o)) }, `option:${current.id}:${i}`);
+
+  const addOption = () => updateCurrent({
+    options: [...current.options, ''],
+    translations: current.translations && Object.fromEntries(Object.entries(current.translations).map(([name, translation]) =>
+      [name, { ...translation, options: [...translation.options, ''] }])),
+  });
 
   const moveOption = (from: number, to: number) => {
     const options = [...current.options];
     [options[from], options[to]] = [options[to]!, options[from]!];
-    updateCurrent({ options });
+    const translations = current.translations && Object.fromEntries(Object.entries(current.translations).map(([name, translation]) => {
+      const translatedOptions = [...translation.options];
+      [translatedOptions[from], translatedOptions[to]] = [translatedOptions[to]!, translatedOptions[from]!];
+      return [name, { ...translation, options: translatedOptions }];
+    }));
+    updateCurrent({ options, translations });
   };
 
   const removeOption = (i: number) => {
     if (current.options.length <= MIN_OPTIONS) return;
     const correct = current.correct.filter((c) => c !== i).map((c) => (c > i ? c - 1 : c));
-    updateCurrent({ options: current.options.filter((_, j) => j !== i), correct });
+    const translations = current.translations && Object.fromEntries(Object.entries(current.translations).map(([name, translation]) =>
+      [name, { ...translation, options: translation.options.filter((_, j) => j !== i) }]));
+    updateCurrent({ options: current.options.filter((_, j) => j !== i), correct, translations });
   };
 
   const toggleCorrect = (i: number) =>
@@ -605,8 +629,8 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                         </span>
                       )}
                     </span>
-                    <span className={`mt-1 line-clamp-2 block text-sm font-semibold ${q.text.trim() ? '' : 'text-muted'}`}>
-                      {q.text.trim() || 'Untitled question'}
+                    <span className={`mt-1 line-clamp-2 block text-sm font-semibold ${(q.translations?.[language]?.text ?? q.text).trim() ? '' : 'text-muted'}`}>
+                      {(q.translations?.[language]?.text ?? q.text).trim() || 'Untitled question'}
                     </span>
                   </button>
                   <div className="mt-2 flex items-center justify-between opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
@@ -670,12 +694,25 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
 
         <section aria-label={`Question ${index + 1}`} className="flex-1 overflow-y-auto bg-app px-4 py-6 sm:px-8">
           <div className="mx-auto max-w-3xl space-y-4">
-            {current.translations && Object.keys(current.translations).length > 0 && (
-              <p role="note" className="rounded-2xl bg-nova-500/10 px-4 py-3 text-sm">
-                <span className="font-semibold">Languages: {Object.keys(current.translations).sort((a, b) => a.localeCompare(b)).join(', ')}.</span>{' '}
-                Players see the wording for the language they choose. Edits here change only this default view; to change any
-                language’s wording, re-import the updated Excel sheet.
-              </p>
+            {languages.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold">Question language</p>
+                <div role="group" aria-label="Question language" className="flex flex-wrap gap-2">
+                  {[{ value: '', label: 'Default (host)' }, ...languages.map((name) => ({ value: name, label: name }))].map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      aria-pressed={language === item.value}
+                      onClick={() => setSelectedLanguage(item.value)}
+                      className={`max-w-full break-words rounded-lg border px-3 py-2 text-sm font-semibold ${
+                        language === item.value ? 'border-nova-500 bg-nova-500/10 text-app' : 'border-app bg-surface text-muted hover:text-app'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
             <div className="rounded-3xl border border-app bg-surface p-5 shadow-soft">
               <label htmlFor="question-text" className="sr-only">
@@ -684,10 +721,10 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
               <textarea
                 id="question-text"
                 rows={2}
-                value={current.text}
+                value={wording.text}
                 maxLength={QUESTION_TEXT_MAX}
                 placeholder="Type your question"
-                onChange={(e) => updateCurrent({ text: e.target.value }, `text:${current.id}`)}
+                onChange={(e) => updateWording({ text: e.target.value }, `text:${current.id}`)}
                 className="w-full resize-none bg-transparent text-center font-display text-2xl font-bold leading-snug placeholder:text-muted/60 focus:outline-none"
               />
               <div className="mt-3 flex items-center gap-2 border-t border-app pt-3">
@@ -720,7 +757,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                   have to put them back.
                 </p>
                 <ol className="space-y-2">
-                  {current.options.map((item, i) => (
+                  {wording.options.map((item, i) => (
                     <li key={i} className="flex items-center gap-2">
                       <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-nova-100 text-sm font-bold text-nova-800 dark:bg-nova-900 dark:text-nova-200">
                         {i + 1}
@@ -766,7 +803,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                 {current.options.length < MAX_OPTIONS && (
                   <button
                     type="button"
-                    onClick={() => updateCurrent({ options: [...current.options, ''] })}
+                    onClick={addOption}
                     className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-app text-sm font-semibold text-muted transition hover:border-nova-400 hover:text-nova-700 dark:hover:text-nova-300"
                   >
                     <Plus className="size-4" aria-hidden="true" />
@@ -999,8 +1036,8 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                   aria-label={isPoll ? 'Poll options' : isMulti ? 'Correct answers' : 'Correct answer'}
                   className="grid gap-3 sm:grid-cols-2"
                 >
-                  {current.options.map((option, i) => {
-                    const style = answerStyle(i);
+                  {wording.options.map((option, i) => {
+                    const style = answerStyle(i, index);
                     const checked = isMulti ? current.correct.includes(i) : current.correct[0] === i;
                     const name = isTf ? option : `answer ${style.letter}`;
                     return (
@@ -1051,7 +1088,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                 {!isTf && current.options.length < MAX_OPTIONS && (
                   <button
                     type="button"
-                    onClick={() => updateCurrent({ options: [...current.options, ''] })}
+                    onClick={addOption}
                     className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-app text-sm font-semibold text-muted transition hover:border-nova-400 hover:text-nova-700 dark:hover:text-nova-300"
                   >
                     <Plus className="size-4" aria-hidden="true" />
@@ -1151,9 +1188,9 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
             Hint (optional)
             <textarea
               rows={1}
-              value={current.hint}
+              value={wording.hint}
               maxLength={HINT_MAX}
-              onChange={(e) => updateCurrent({ hint: e.target.value }, `hint:${current.id}`)}
+              onChange={(e) => updateWording({ hint: e.target.value }, `hint:${current.id}`)}
               className={TEXTAREA_CLASS}
             />
             <span className="block text-xs font-normal text-muted">Players can open it on their phone while the clock runs.</span>
@@ -1162,9 +1199,9 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
             Explanation (shown after answering)
             <textarea
               rows={3}
-              value={current.explanation}
+              value={wording.explanation}
               maxLength={EXPLANATION_MAX}
-              onChange={(e) => updateCurrent({ explanation: e.target.value }, `explanation:${current.id}`)}
+              onChange={(e) => updateWording({ explanation: e.target.value }, `explanation:${current.id}`)}
               className={TEXTAREA_CLASS}
             />
           </label>
@@ -1194,8 +1231,8 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
             {current.imageUrl.trim() && isImageUrl(current.imageUrl.trim()) && (
               <QuestionImage key={current.imageUrl.trim()} url={current.imageUrl.trim()} className="max-h-48" />
             )}
-            <p className={`font-display text-xl font-bold ${current.text.trim() ? '' : 'text-muted'}`}>
-              {current.text.trim() ? <QuestionText text={current.text.trim()} blanks={isBlanks} /> : 'Your question appears here'}
+            <p className={`font-display text-xl font-bold ${wording.text.trim() ? '' : 'text-muted'}`}>
+              {wording.text.trim() ? <QuestionText text={wording.text.trim()} blanks={isBlanks} /> : 'Your question appears here'}
             </p>
           </div>
           {isRating ? (
@@ -1212,7 +1249,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
           ) : isOrder ? (
             <div className="space-y-2">
               <p className="text-center text-sm font-semibold text-muted">Players see these mixed up and move them into order</p>
-              {current.options.map((item, i) => (
+              {wording.options.map((item, i) => (
                 <div key={i} className="flex items-center gap-2 rounded-2xl bg-surface p-3 font-bold shadow-soft">
                   <span className="text-muted">{i + 1}.</span>
                   <span className={item.trim() ? '' : 'text-muted'}>{item.trim() || `Item ${i + 1}`}</span>
@@ -1244,8 +1281,8 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
               {isPoll && current.allowMultiple && (
                 <p className="text-center text-sm font-semibold text-muted sm:col-span-2">Pick as many as you like, then submit</p>
               )}
-              {current.options.map((option, i) => {
-                const style = answerStyle(i);
+              {wording.options.map((option, i) => {
+                const style = answerStyle(i, index);
                 return (
                   <button
                     key={i}

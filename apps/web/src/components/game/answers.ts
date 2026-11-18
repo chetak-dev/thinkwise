@@ -15,6 +15,7 @@ export const ANSWER_STYLES: AnswerStyle[] = [
   { bg: 'bg-answer-6', Icon: Cloud, letter: 'F' },
 ];
 
-export function answerStyle(index: number): AnswerStyle {
-  return ANSWER_STYLES[index % ANSWER_STYLES.length]!;
+export function answerStyle(index: number, questionIndex = 0): AnswerStyle {
+  const style = ANSWER_STYLES[index % ANSWER_STYLES.length]!;
+  return { ...style, bg: ANSWER_STYLES[(index + questionIndex) % ANSWER_STYLES.length]!.bg };
 }

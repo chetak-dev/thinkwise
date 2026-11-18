@@ -143,7 +143,8 @@ export function BlanksAnswer({
 }
 
 function optionLabel(q: PublicQuestion, i: number, t: Strings) {
-  if (q.type === 'tf') return i === 0 ? t.answerTrue : t.answerFalse;
+  if (q.type === 'tf' && q.options[i] === 'True') return t.answerTrue;
+  if (q.type === 'tf' && q.options[i] === 'False') return t.answerFalse;
   return q.options[i]!;
 }
 
@@ -322,7 +323,7 @@ export function AnswerButtons({
       {multi && <p className="text-center text-sm font-semibold text-muted">{question.type === 'poll' ? t.pickAny : t.pickAll}</p>}
       <div className="grid grid-cols-1 gap-3">
         {question.options.map((_, i) => {
-          const style = answerStyle(i);
+          const style = answerStyle(i, question.index);
           const on = picked.includes(i);
           return (
             <button
@@ -444,7 +445,7 @@ export function AnswerSummary({
   return (
     <div className="grid gap-2">
       {question.options.map((_, i) => {
-        const style = answerStyle(i);
+        const style = answerStyle(i, question.index);
         const isPick = picks.includes(i);
         const isRight = right?.includes(i) ?? false;
         const faded = right ? !isRight && !isPick : !isPick;

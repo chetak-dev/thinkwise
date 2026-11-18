@@ -421,7 +421,7 @@ export function Stage({
         {usesOptions(question.type) && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {question.options.map((label, i) => {
-              const style = answerStyle(i);
+              const style = answerStyle(i, question.index);
               const count = progress?.counts[i] ?? 0;
               const total = progress?.answered ?? 0;
               const share = total > 0 ? count / total : 0;

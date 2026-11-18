@@ -141,7 +141,7 @@ export function StartSessionDialog({
               checked={shuffleEach}
               onChange={setShuffleEach}
               label="Different answer order for each player"
-              description="Mixes up the answer options on every phone, so neighbours can’t copy. True/false stays as is."
+              description="Mixes up the answer options on every phone to make copying harder."
             />
           </div>
         )}
@@ -180,7 +180,7 @@ export function StartSessionDialog({
               checked={shuffleEach}
               onChange={setShuffleEach}
               label="Different order for each participant"
-              description="Shuffles questions and answer options per person, so neighbours can’t copy"
+              description="Shuffles questions and answer options per person to make copying harder"
             />
             <Switch
               checked={showLeaderboard}

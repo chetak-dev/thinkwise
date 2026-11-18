@@ -859,10 +859,20 @@ test('each player gets their own option order; marking, counts and rejoins follo
     assert.deepEqual(ores[i]!.correct.map((c) => ord[i]!.question.options[c]), ['1', '2', '3', '4']);
   }
 
-  // True/false keeps its natural order.
   marks = ps.map((p) => p.c.mark());
   h.send({ t: 'host:next' });
-  for (const [i, p] of ps.entries()) assert.deepEqual((await p.c.next('question', marks[i])).question.options, ['True', 'False']);
+  const trueFalse = await Promise.all(ps.map((p, i) => p.c.next('question', marks[i])));
+  marks = ps.map((p) => p.c.mark());
+  ps.forEach((p, i) => {
+    const options = trueFalse[i]!.question.options;
+    assert.deepEqual([...options].sort(), ['False', 'True']);
+    p.c.send({ t: 'player:answer', index: 3, choice: options.indexOf('True') });
+  });
+  const tfResults = await Promise.all(ps.map((p, i) => p.c.next('result', marks[i])));
+  tfResults.forEach((result, i) => {
+    assert.equal(result.isCorrect, true);
+    assert.deepEqual(result.correct, [trueFalse[i]!.question.options.indexOf('True')]);
+  });
 
   for (const x of [h, ...ps.map((p) => p.c)]) x.close();
 });

@@ -288,11 +288,11 @@ function progressMsg(game: Game): ServerMessage {
 
 /**
  * This player's own option order for a question, made the first time they see it and kept for rejoins.
- * True/false keeps its natural order; questions without options have none.
+ * Questions without options have no order.
  */
 function orderFor(game: Game, player: Player, index: number): number[] | null {
   const q = game.quiz.questions[index];
-  if (!game.mixOptions || !q || q.type === 'tf' || q.options.length < 2) return null;
+  if (!game.mixOptions || !q || q.options.length < 2) return null;
   let order = player.orders.get(index);
   if (!order || order.length !== q.options.length) {
     const ids = q.options.map((_, i) => i);
