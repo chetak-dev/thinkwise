@@ -35,6 +35,8 @@ const FIELD_CLASS =
 interface Editing {
   initial?: PlayerAnswer | null;
   submitLabel?: string;
+  /** Self-paced: the answer being edited but not saved yet, or null when there is none worth saving. */
+  onDraft?: (input: AnswerInput | null) => void;
 }
 
 export function NumberAnswer({
@@ -43,6 +45,7 @@ export function NumberAnswer({
   disabled,
   initial,
   submitLabel,
+  onDraft,
 }: { t: Strings; onSubmit: (a: AnswerInput) => void; disabled: boolean } & Editing) {
   const [typed, setTyped] = useState(initial?.number === undefined ? '' : String(initial.number));
   const [invalid, setInvalid] = useState(false);
@@ -72,6 +75,8 @@ export function NumberAnswer({
         onChange={(e) => {
           setTyped(e.target.value);
           setInvalid(false);
+          const n = parseNumberAnswer(e.target.value);
+          onDraft?.(n === null ? null : { number: n });
         }}
         placeholder={t.typeNumber}
         className={`${FIELD_CLASS} tabular-nums`}
@@ -95,6 +100,7 @@ export function BlanksAnswer({
   disabled,
   initial,
   submitLabel,
+  onDraft,
 }: {
   count: number;
   t: Strings;
@@ -103,6 +109,11 @@ export function BlanksAnswer({
 } & Editing) {
   const [filled, setFilled] = useState<string[]>(() => Array.from({ length: count }, (_, i) => initial?.blanks?.[i] ?? ''));
   const any = filled.some((f) => f.trim());
+  const fill = (i: number, value: string) => {
+    const next = filled.map((x, j) => (j === i ? value : x));
+    setFilled(next);
+    onDraft?.(next.some((f) => f.trim()) ? { blanks: next.map((f) => f.trim()) } : null);
+  };
   return (
     <form
       className="space-y-3"
@@ -129,7 +140,7 @@ export function BlanksAnswer({
             enterKeyHint={i === count - 1 ? 'send' : 'next'}
             maxLength={ANSWER_TEXT_MAX}
             value={value}
-            onChange={(e) => setFilled((f) => f.map((x, j) => (j === i ? e.target.value : x)))}
+            onChange={(e) => fill(i, e.target.value)}
             placeholder={t.blankLabel(i + 1)}
             className="h-14 w-full rounded-2xl border-2 border-app bg-surface px-4 text-lg font-bold focus:border-nova-500 focus:outline-none"
           />
@@ -155,6 +166,7 @@ export function TypedAnswer({
   maxWords,
   initial,
   submitLabel,
+  onDraft,
 }: {
   t: Strings;
   onSubmit: (a: AnswerInput) => void;
@@ -189,7 +201,12 @@ export function TypedAnswer({
         enterKeyHint="send"
         maxLength={maxWords !== undefined ? CLOUD_ANSWER_MAX : ANSWER_TEXT_MAX}
         value={typed}
-        onChange={(e) => setTyped(e.target.value)}
+        onChange={(e) => {
+          const value = e.target.value;
+          setTyped(value);
+          const ok = value.trim() && !(maxWords !== undefined && countWords(value) > maxWords);
+          onDraft?.(ok ? { text: value.trim().replace(/\s+/g, ' ') } : null);
+        }}
         placeholder={t.typeAnswer}
         aria-describedby={maxWords !== undefined ? 'typed-limit' : undefined}
         aria-invalid={tooMany || undefined}
@@ -209,6 +226,7 @@ export function OrderAnswer({
   disabled,
   initial,
   submitLabel,
+  onDraft,
 }: {
   items: string[];
   t: Strings;
@@ -218,12 +236,12 @@ export function OrderAnswer({
   const [order, setOrder] = useState(() =>
     initial?.choices?.length === items.length ? [...initial.choices] : items.map((_, i) => i),
   );
-  const move = (from: number, to: number) =>
-    setOrder((o) => {
-      const next = [...o];
-      [next[from], next[to]] = [next[to]!, next[from]!];
-      return next;
-    });
+  const move = (from: number, to: number) => {
+    const next = [...order];
+    [next[from], next[to]] = [next[to]!, next[from]!];
+    setOrder(next);
+    onDraft?.({ choices: next });
+  };
   return (
     <div className="space-y-3">
       <p className="text-center text-sm font-semibold text-muted">{t.orderHint}</p>
@@ -300,14 +318,18 @@ export function AnswerButtons({
   disabled,
   initial,
   submitLabel,
+  onDraft,
+  dense = false,
 }: {
   question: PublicQuestion;
   t: Strings;
   onSubmit: (answer: AnswerInput) => void;
   disabled: boolean;
+  /** Shorter answer buttons, for screens that show many questions in a row. */
+  dense?: boolean;
 } & Editing) {
   const [picked, setPicked] = useState<number[]>(() => initial?.choices ?? []);
-  const edit = { t, onSubmit, disabled, initial, submitLabel };
+  const edit = { t, onSubmit, disabled, initial, submitLabel, onDraft };
   if (question.type === 'text') return <TypedAnswer {...edit} />;
   if (question.type === 'cloud') return <TypedAnswer {...edit} maxWords={question.maxWords ?? 1} />;
   if (question.type === 'numeric') return <NumberAnswer {...edit} />;
@@ -317,11 +339,15 @@ export function AnswerButtons({
     return <RatingAnswer scale={question.scale} onSubmit={onSubmit} disabled={disabled} initial={initial} />;
   }
   const multi = question.type === 'multi' || (question.type === 'poll' && question.multiple === true);
-  const toggle = (i: number) => setPicked((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]));
+  const toggle = (i: number) => {
+    const next = picked.includes(i) ? picked.filter((x) => x !== i) : [...picked, i];
+    setPicked(next);
+    onDraft?.(next.length ? { choices: [...next].sort((a, b) => a - b) } : null);
+  };
   return (
-    <div className="space-y-4">
+    <div className={dense ? 'space-y-3' : 'space-y-4'}>
       {multi && <p className="text-center text-sm font-semibold text-muted">{question.type === 'poll' ? t.pickAny : t.pickAll}</p>}
-      <div className="grid grid-cols-1 gap-3">
+      <div className={`grid grid-cols-1 ${dense ? 'gap-2 sm:gap-3' : 'gap-3'}`}>
         {question.options.map((_, i) => {
           const style = answerStyle(i, question.index);
           const on = picked.includes(i);
@@ -332,7 +358,9 @@ export function AnswerButtons({
               disabled={disabled}
               aria-pressed={multi ? on : undefined}
               onClick={() => (multi ? toggle(i) : onSubmit({ choice: i }))}
-              className={`group relative flex min-h-16 w-full touch-manipulation items-center gap-3 rounded-2xl px-4 py-3 text-left font-bold text-white shadow-[0_6px_0_0_rgb(0_0_0/0.18)] transition-all active:translate-y-[3px] active:shadow-[0_3px_0_0_rgb(0_0_0/0.18)] disabled:cursor-default sm:gap-3 sm:px-4 ${style.bg} ${
+              className={`group relative flex w-full touch-manipulation items-center gap-3 rounded-2xl px-4 text-left font-bold text-white shadow-[0_6px_0_0_rgb(0_0_0/0.18)] transition-all active:translate-y-[3px] active:shadow-[0_3px_0_0_rgb(0_0_0/0.18)] disabled:cursor-default sm:gap-3 sm:px-4 ${
+                dense ? 'min-h-12 py-2 sm:min-h-16 sm:py-3' : 'min-h-16 py-3'
+              } ${style.bg} ${
                 on ? 'ring-4 ring-white/80 ring-offset-2 ring-offset-[var(--bg)]' : ''
               }`}
             >

@@ -299,7 +299,7 @@ test('participants must choose a valid gender to complete or update their profil
   assert.equal(profile.profileComplete(r.user), false);
   const bad = await profile.updateProfile(db, r.user, { name: ' ', phone: '12', address: 'short' });
   assert.equal(bad.ok, false);
-  if (!bad.ok) assert.deepEqual(Object.keys(bad.fieldErrors).sort(), ['address', 'gender', 'name', 'phone']);
+  if (!bad.ok) assert.deepEqual(Object.keys(bad.fieldErrors).sort(), ['gender', 'name', 'phone']);
   const details = { name: 'Gita', phone: '9876543210', address: '12 Main Road, Bhubaneswar' };
   assert.equal((await profile.updateProfile(db, r.user, { ...details, gender: '' })).ok, false);
   assert.equal((await profile.updateProfile(db, r.user, { ...details, gender: 'invalid' })).ok, false);
@@ -343,6 +343,11 @@ test('participants must choose a valid gender to complete or update their profil
   assert.equal(profile.profileComplete(savedLegacy), true, 'existing choices remain complete');
   assert.ok((await profile.updateProfile(db, savedLegacy!, { ...details, gender: 'male' })).ok);
   assert.equal((await auth.getSessionUser(db, token))?.gender, 'male', 'an updated choice is saved');
+
+  assert.ok((await profile.updateProfile(db, savedLegacy!, { name: 'Gita', phone: ' ', address: '', gender: 'female' })).ok);
+  const minimal = await auth.getSessionUser(db, token);
+  assert.deepEqual([minimal?.phone, minimal?.address], [null, null], 'phone and address are optional');
+  assert.equal(profile.profileComplete(minimal), true, 'name and gender complete the profile');
 });
 
 test('true or false choices are shuffled and mapped back for scoring', () => {

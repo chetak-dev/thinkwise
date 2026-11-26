@@ -28,7 +28,7 @@ export interface AdminUserRow {
 }
 
 /** Includes contact details, so only call this for a site admin. */
-export async function listUsersForAdmin(db: Db, search = '', limit = 200): Promise<AdminUserRow[]> {
+export async function listUsersForAdmin(db: Db, search = '', limit = 200, offset = 0): Promise<AdminUserRow[]> {
   const q = search.trim().slice(0, 100).replace(/[\\%_]/g, '\\$&');
   const rows = await db
     .select({
@@ -43,8 +43,9 @@ export async function listUsersForAdmin(db: Db, search = '', limit = 200): Promi
     })
     .from(users)
     .where(q ? or(ilike(users.email, `%${q}%`), ilike(users.name, `%${q}%`), ilike(users.phone, `%${q}%`)) : undefined)
-    .orderBy(desc(users.canHost), desc(users.createdAt))
-    .limit(limit);
+    .orderBy(desc(users.canHost), desc(users.createdAt), desc(users.id))
+    .limit(limit)
+    .offset(offset);
   return rows
     .map((r) => {
       const siteAdmin = isSiteAdmin(r);

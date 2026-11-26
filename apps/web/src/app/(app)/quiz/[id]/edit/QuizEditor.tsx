@@ -16,6 +16,7 @@ import {
   FileUp,
   ImageIcon,
   Loader2,
+  MoreHorizontal,
   Play,
   Plus,
   Redo2,
@@ -91,7 +92,10 @@ const freshQuestion = (type: DraftQuestion['type'] = 'mc') => newQuestion(type, 
 const SELECT_CLASS =
   'h-10 w-full rounded-xl border border-app bg-surface px-3 text-sm font-medium focus:border-nova-400 focus:outline-none';
 const ICON_BTN =
-  'inline-flex size-9 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-app disabled:opacity-40';
+  'inline-flex size-10 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-app disabled:opacity-40 sm:size-9';
+// Question-strip actions hide until hover only where a mouse can hover; touch screens always see them.
+const STRIP_ACTIONS = 'mt-2 flex items-center justify-between lg:[@media(hover:hover)]:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100';
+const STRIP_BTN = 'rounded-lg p-2.5 text-muted disabled:opacity-30 lg:p-1.5';
 const TEXTAREA_CLASS =
   'w-full resize-y rounded-xl border border-app bg-surface px-3 py-2 text-sm font-normal focus:border-nova-400 focus:outline-none';
 const INPUT_CLASS =
@@ -145,6 +149,8 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
   const [isPublished, setIsPublished] = useState(quiz.status === 'published');
   const [publishing, setPublishing] = useState(false);
   const [justPublished, setJustPublished] = useState(false);
@@ -152,6 +158,22 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
   const [startOpen, setStartOpen] = useState(false);
   const { host, pending: hosting, failure, clearFailure } = useHostQuiz();
   const { canHost: canHostQuiz } = useAccess();
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const outside = (e: PointerEvent) => {
+      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMoreOpen(false);
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [moreOpen]);
 
   const commit = useCallback((change: (doc: Doc) => Doc, groupKey: string | null = null) => {
     const now = Date.now();
@@ -471,11 +493,19 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
   const isPoll = current.type === 'poll';
   const isCloud = current.type === 'cloud';
   const scored = isScored(current.type);
+  const publishLabel = justPublished ? 'Published' : isPublished ? 'Publish update' : 'Publish';
+  const moreActions = [
+    { label: 'Preview', Icon: Eye, run: () => setPreviewOpen(true) },
+    { label: 'Quiz settings', Icon: Settings, run: () => setSettingsOpen(true) },
+    { label: 'Import from CSV', Icon: FileUp, run: () => setImportOpen(true) },
+    { label: 'Export as CSV', Icon: Download, run: exportCsv },
+  ];
 
   return (
     <div className="-mx-4 -my-6 flex min-h-[calc(100dvh-57px)] flex-col sm:-mx-6 lg:-mx-10 lg:-my-10 lg:min-h-dvh">
-      <header className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-app bg-surface/95 px-3 py-2 backdrop-blur sm:px-4">
-        <Link href="/library" onClick={goBack} aria-label="Back to library" className="rounded-lg p-2 text-muted hover:bg-surface-2">
+      <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-app bg-surface/95 px-3 py-2 backdrop-blur sm:px-4">
+        <div className="flex min-w-0 flex-1 basis-64 items-center gap-1">
+        <Link href="/library" onClick={goBack} aria-label="Back to library" className="rounded-lg p-2.5 text-muted hover:bg-surface-2 sm:p-2">
           <ArrowLeft className="size-5" aria-hidden="true" />
         </Link>
         <label htmlFor="quiz-title" className="sr-only">
@@ -487,9 +517,9 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
           maxLength={QUIZ_TITLE_MAX}
           placeholder="Name your quiz"
           onChange={(e) => setTitle(e.target.value)}
-          className="min-w-[12rem] flex-1 rounded-lg bg-transparent px-2 py-1.5 font-display text-lg font-bold hover:bg-surface-2 focus:bg-surface-2 focus:outline-none"
+          className="min-w-0 flex-1 rounded-lg bg-transparent px-2 py-1.5 font-display text-lg font-bold hover:bg-surface-2 focus:bg-surface-2 focus:outline-none"
         />
-        <span role="status" className="flex items-center gap-1.5 px-2 text-xs font-semibold text-muted">
+        <span role="status" className="flex shrink-0 items-center gap-1.5 px-1 text-xs font-semibold text-muted sm:px-2">
           {saveError && !saving ? (
             <>
               <CloudOff className="size-3.5 text-coral-600" aria-hidden="true" />
@@ -510,6 +540,8 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
             </>
           )}
         </span>
+        </div>
+        <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
         <div className="flex items-center">
           <button type="button" aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)" disabled={!history.past.length} onClick={undo} className={ICON_BTN}>
             <Undo2 className="size-4" aria-hidden="true" />
@@ -524,6 +556,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
           >
             <Redo2 className="size-4" aria-hidden="true" />
           </button>
+          <span className="hidden sm:contents">
           <button type="button" aria-label="Import questions from CSV" title="Import questions from CSV" onClick={() => setImportOpen(true)} className={ICON_BTN}>
             <FileUp className="size-4" aria-hidden="true" />
           </button>
@@ -533,11 +566,44 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
           <button type="button" aria-label="Quiz settings" title="Quiz settings" onClick={() => setSettingsOpen(true)} className={ICON_BTN}>
             <Settings className="size-4" aria-hidden="true" />
           </button>
+          </span>
+          <div ref={moreRef} className="relative sm:hidden">
+            <button
+              type="button"
+              aria-label="More actions"
+              aria-haspopup="menu"
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen((o) => !o)}
+              className={ICON_BTN}
+            >
+              <MoreHorizontal className="size-5" aria-hidden="true" />
+            </button>
+            {moreOpen && (
+              <div role="menu" className="absolute left-0 top-full z-40 mt-1 w-52 overflow-hidden rounded-xl border border-app bg-surface py-1 shadow-lift">
+                {moreActions.map(({ label, Icon, run }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      run();
+                    }}
+                    className="flex h-11 w-full items-center gap-3 px-4 text-left text-sm font-semibold hover:bg-surface-2"
+                  >
+                    <Icon className="size-4 text-muted" aria-hidden="true" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+        <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => setPreviewOpen(true)}
-          className="inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-app bg-surface px-3 text-sm font-semibold text-app transition-all duration-200 hover:-translate-y-0.5 hover:border-nova-400 hover:text-nova-700 active:scale-[0.97] dark:hover:text-nova-300"
+          className="hidden h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-app bg-surface px-3 text-sm font-semibold text-app transition-all duration-200 hover:-translate-y-0.5 hover:border-nova-400 hover:text-nova-700 active:scale-[0.97] sm:inline-flex dark:hover:text-nova-300"
         >
           <Eye className="size-4" aria-hidden="true" />
           Preview
@@ -546,7 +612,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
           type="button"
           disabled={publishing}
           onClick={() => void publish()}
-          className={`inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-sm font-semibold transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 ${
+          className={`inline-flex h-10 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-sm font-semibold transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 sm:h-8 ${
             isPublished
               ? 'bg-surface-2 text-app hover:bg-nova-100 dark:hover:bg-ink-700'
               : 'bg-nova-600 text-white shadow-[0_6px_20px_-8px_rgb(90_47_242/0.7)] hover:bg-nova-700 active:bg-nova-800'
@@ -559,19 +625,24 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
           ) : (
             <Rocket className="size-4" aria-hidden="true" />
           )}
-          <span aria-live="polite">{justPublished ? 'Published' : isPublished ? 'Publish update' : 'Publish'}</span>
+          <span aria-live="polite">
+            <span className="sm:hidden">{isPublished && !justPublished ? 'Update' : publishLabel}</span>
+            <span className="hidden sm:inline">{publishLabel}</span>
+          </span>
         </button>
         {canHostQuiz && (
         <button
           type="button"
           disabled={hosting}
           onClick={() => setStartOpen(true)}
-          className="inline-flex h-8 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] px-3 text-sm font-semibold text-white shadow-[0_10px_30px_-10px_rgb(255_93_115/0.7)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
+          className="inline-flex h-10 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] px-3 text-sm font-semibold text-white shadow-[0_10px_30px_-10px_rgb(255_93_115/0.7)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 sm:h-8"
         >
           {hosting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
           Host
         </button>
         )}
+        </div>
+        </div>
       </header>
 
       {shownFailure && (
@@ -633,14 +704,14 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                       {(q.translations?.[language]?.text ?? q.text).trim() || 'Untitled question'}
                     </span>
                   </button>
-                  <div className="mt-2 flex items-center justify-between opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+                  <div className={STRIP_ACTIONS}>
                     <span className="flex">
                       <button
                         type="button"
                         aria-label={`Move question ${i + 1} up`}
                         disabled={i === 0}
                         onClick={() => move(i, i - 1)}
-                        className="rounded-lg p-1.5 text-muted hover:bg-surface-2 disabled:opacity-30"
+                        className={`${STRIP_BTN} hover:bg-surface-2`}
                       >
                         <ArrowUp className="size-4" aria-hidden="true" />
                       </button>
@@ -649,7 +720,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                         aria-label={`Move question ${i + 1} down`}
                         disabled={i === questions.length - 1}
                         onClick={() => move(i, i + 1)}
-                        className="rounded-lg p-1.5 text-muted hover:bg-surface-2 disabled:opacity-30"
+                        className={`${STRIP_BTN} hover:bg-surface-2`}
                       >
                         <ArrowDown className="size-4" aria-hidden="true" />
                       </button>
@@ -660,7 +731,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                         aria-label={`Duplicate question ${i + 1}`}
                         disabled={questions.length >= MAX_QUESTIONS}
                         onClick={() => duplicate(i)}
-                        className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-app disabled:opacity-30"
+                        className={`${STRIP_BTN} hover:bg-surface hover:text-app`}
                       >
                         <Copy className="size-4" aria-hidden="true" />
                       </button>
@@ -669,7 +740,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
                         aria-label={`Delete question ${i + 1}`}
                         disabled={questions.length <= 1}
                         onClick={() => remove(i)}
-                        className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-coral-600 disabled:opacity-30"
+                        className={`${STRIP_BTN} hover:bg-surface hover:text-coral-600`}
                       >
                         <Trash2 className="size-4" aria-hidden="true" />
                       </button>

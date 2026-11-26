@@ -5,13 +5,22 @@ import { requireSiteAdmin } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDate } from '@/lib/time';
 import { AdminUsers } from './AdminUsers';
+import { Pager, parsePage } from '@/components/Pager';
 
 export const metadata: Metadata = { title: 'Admin · ThinkWise' };
 
-export default async function AdminPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+const PAGE_SIZE = 50;
+
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
   await requireSiteAdmin('/admin');
-  const { q = '' } = await searchParams;
-  const [timeZone, users] = await Promise.all([getTimeZone(), listUsersForAdmin(getDb(), String(q), 200)]);
+  const { q = '', page: rawPage } = await searchParams;
+  const page = parsePage(rawPage);
+  const [timeZone, rows] = await Promise.all([
+    getTimeZone(),
+    listUsersForAdmin(getDb(), String(q), PAGE_SIZE + 1, (page - 1) * PAGE_SIZE),
+  ]);
+  const hasNext = rows.length > PAGE_SIZE;
+  const users = rows.slice(0, PAGE_SIZE);
   const dates = Object.fromEntries(users.map((u) => [u.id, formatDate(new Date(u.createdAt), timeZone)]));
 
   return (
@@ -40,6 +49,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         </button>
       </form>
       <AdminUsers users={users} dates={dates} />
+      <Pager basePath="/admin" params={{ q: String(q) }} page={page} hasNext={hasNext} />
     </div>
   );
 }

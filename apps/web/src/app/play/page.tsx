@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ArrowDown, ArrowUp, Check, Feather, Lightbulb, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, CheckCircle2, Clock, Feather, History, Lightbulb, Loader2, Trophy, Volume2, VolumeX } from 'lucide-react';
 import {
   ANSWER_TEXT_MAX,
   AVATARS,
@@ -271,9 +271,9 @@ function QuestionStage({
         </div>
       ) : timedOut ? (
         <div className="flex flex-col items-center justify-center gap-3 py-8 text-center" role="status">
-          <div className="text-5xl" aria-hidden="true">
-            ⏰
-          </div>
+          <span className="flex size-14 items-center justify-center rounded-full bg-surface-2 text-muted" aria-hidden="true">
+            <Clock className="size-7" />
+          </span>
           <h2 className="font-display text-2xl font-bold">{t.timeUp}</h2>
         </div>
       ) : (
@@ -286,60 +286,71 @@ function QuestionStage({
 function FinalStage({ final, me, t, rules }: { final: Final; me: Me; t: Strings; rules: PublicRules }) {
   const mine = final.me;
   const ranked = rules.showLeaderboard;
-  const medal = ranked && mine && mine.rank <= 3 ? ['🥇', '🥈', '🥉'][mine.rank - 1] : '🎉';
+  const stats: { label: string; value: string; of?: string }[] = mine
+    ? [
+        ...(ranked ? [{ label: t.yourPlace, value: String(mine.rank), of: `/ ${final.total}` }] : []),
+        { label: t.score, value: String(mine.score) },
+        { label: t.correctAnswers, value: String(mine.correctCount), of: `/ ${final.questionCount}` },
+        ...(final.questionCount ? [{ label: t.accuracy, value: `${Math.round((mine.correctCount / final.questionCount) * 100)}%` }] : []),
+      ]
+    : [];
   return (
-    <div className="flex flex-1 flex-col items-center gap-5 text-center">
+    <div className="flex flex-1 flex-col gap-6 pt-2">
       {rules.gamification && ranked && mine && mine.rank <= 3 && <Confetti />}
-      <div className="animate-pop text-7xl" aria-hidden="true">
-        {medal}
-      </div>
-      <h2 className="font-display text-3xl font-bold">{t.allDone}</h2>
-      {final.waiting && (
-        <p className="animate-pulse font-semibold text-muted" role="status">
-          {t.waitingOthers}
-        </p>
-      )}
-      {rules.completionMessage && <p className="max-w-sm whitespace-pre-line font-semibold">{rules.completionMessage}</p>}
-      {mine && (
-        <div className={`grid w-full gap-3 ${ranked ? 'grid-cols-3' : 'grid-cols-2'}`}>
-          {ranked && (
-            <div className="rounded-2xl bg-surface p-3 shadow-soft">
-              <div className="font-display text-2xl font-bold tabular-nums">
-                #{mine.rank}
-                <span className="text-sm text-muted"> / {final.total}</span>
-              </div>
-              <div className="text-xs font-semibold text-muted">{t.yourPlace}</div>
-            </div>
-          )}
-          <div className="rounded-2xl bg-surface p-3 shadow-soft">
-            <div className="font-display text-2xl font-bold tabular-nums">{mine.score}</div>
-            <div className="text-xs font-semibold text-muted">{t.score}</div>
-          </div>
-          <div className="rounded-2xl bg-surface p-3 shadow-soft">
-            <div className="font-display text-2xl font-bold tabular-nums">
-              {mine.correctCount}
-              <span className="text-sm text-muted"> / {final.questionCount}</span>
-            </div>
-            <div className="text-xs font-semibold text-muted">{t.correctAnswers}</div>
+      <section className="overflow-hidden rounded-3xl border border-app bg-surface shadow-soft">
+        <div className="flex items-start gap-4 p-6">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+            {ranked && mine && mine.rank <= 3 ? <Trophy className="size-6" aria-hidden="true" /> : <CheckCircle2 className="size-6" aria-hidden="true" />}
+          </span>
+          <div className="min-w-0">
+            <h2 className="font-display text-2xl font-bold leading-tight">{t.allDone}</h2>
+            {final.waiting && (
+              <p className="mt-1 animate-pulse text-sm font-semibold text-muted" role="status">
+                {t.waitingOthers}
+              </p>
+            )}
           </div>
         </div>
-      )}
+        {rules.completionMessage && (
+          <p className="mx-6 mb-6 whitespace-pre-line border-l-2 border-nova-400 pl-3 text-sm">{rules.completionMessage}</p>
+        )}
+        {stats.length > 0 && (
+          <dl className={`grid grid-cols-2 border-t border-app ${stats.length === 4 ? 'sm:grid-cols-4' : stats.length === 3 ? 'sm:grid-cols-3' : ''}`}>
+            {stats.map((s, i) => (
+              <div
+                key={s.label}
+                className={`px-5 py-4 ${i % 2 === 1 ? 'border-l border-app' : ''} ${i >= 2 ? 'border-t border-app sm:border-l sm:border-t-0' : ''}`}
+              >
+                <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{s.label}</dt>
+                <dd className="mt-1 font-display text-2xl font-bold tabular-nums">
+                  {s.value}
+                  {s.of && <span className="ml-1 text-sm font-semibold text-muted">{s.of}</span>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </section>
       {final.podium.length > 0 && (
-        <div className="w-full rounded-3xl bg-surface p-4 text-left shadow-soft">
-          <p className="mb-2 text-sm font-semibold text-muted">{t.topPlayers}</p>
-          <ol className="space-y-1.5">
+        <section>
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">{t.topPlayers}</h3>
+          <ol className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl border border-app bg-surface">
             {final.podium.map((s: Standing) => (
-              <li key={s.id} className={`flex items-center gap-2 ${s.id === me.id ? 'font-bold' : ''}`}>
-                <span className="w-6 text-center">{['🥇', '🥈', '🥉'][s.rank - 1] ?? s.rank}</span>
+              <li key={s.id} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${s.id === me.id ? 'bg-nova-500/10 font-bold' : ''}`}>
+                <span className="w-6 text-right font-semibold tabular-nums text-muted">{s.rank}</span>
                 <span aria-hidden="true">{s.avatar}</span>
                 <span className="flex-1 truncate font-semibold">{s.nickname}</span>
                 <span className="font-bold tabular-nums">{s.score}</span>
               </li>
             ))}
           </ol>
-        </div>
+        </section>
       )}
-      <Link href="/history" className="font-semibold text-nova-600 underline dark:text-nova-300">
+      <Link
+        href="/history"
+        className="inline-flex h-11 items-center justify-center gap-2 self-center rounded-xl border border-app bg-surface px-5 text-sm font-semibold shadow-soft hover:bg-surface-2"
+      >
+        <History className="size-4" aria-hidden="true" />
         {t.myHistory}
       </Link>
     </div>

@@ -25,7 +25,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
             Live quizzes, instant results and a leaderboard everyone can see — for classrooms, campuses and events.
           </p>
         </div>
-        <p className="text-sm text-white/70">Players never need an account · Works on any phone</p>
+        <p className="text-sm text-white/70">One account for every quiz · Works on any phone</p>
       </div>
       <main id="main" className="relative flex items-center justify-center px-4 py-10">
         <div className="decorative arena-grid pointer-events-none absolute inset-0 -z-10" aria-hidden="true" />

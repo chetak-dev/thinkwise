@@ -7,8 +7,11 @@ import { getTimeZone } from '@/lib/timeZone';
 import { QuizCard } from '@/components/QuizCard';
 import { NewQuizButton } from '@/components/NewQuizButton';
 import { LibraryImportButton } from '@/components/LibraryImportButton';
+import { Pager, parsePage } from '@/components/Pager';
 
 export const metadata: Metadata = { title: 'Library · ThinkWise' };
+
+const PAGE_SIZE = 24;
 
 const TABS: { scope: LibraryScope; label: string; empty: string }[] = [
   { scope: 'mine', label: 'My quizzes', empty: 'Start with a blank quiz. Everything you type is saved automatically.' },
@@ -19,13 +22,16 @@ const TABS: { scope: LibraryScope; label: string; empty: string }[] = [
   { scope: 'archived', label: 'Archived', empty: 'Archived quizzes are tucked away here, ready to restore.' },
 ];
 
-export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ q?: string; scope?: string }> }) {
+export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ q?: string; scope?: string; page?: string }> }) {
   const user = await requireHost('/library');
   const params = await searchParams;
   const q = (params.q ?? '').trim().slice(0, 100);
   const tab = TABS.find((t) => t.scope === params.scope) ?? TABS[0]!;
   const scope = tab.scope;
-  const quizzes = await listQuizzes(getDb(), user.id, { scope, q });
+  const page = parsePage(params.page);
+  const rows = await listQuizzes(getDb(), user.id, { scope, q, limit: PAGE_SIZE + 1, offset: (page - 1) * PAGE_SIZE });
+  const hasNext = rows.length > PAGE_SIZE;
+  const quizzes = rows.slice(0, PAGE_SIZE);
   const [counts, timeZone] = await Promise.all([sessionCounts(getDb(), user.id, quizzes.map((x) => x.id)), getTimeZone()]);
 
   return (
@@ -77,27 +83,32 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
       </div>
 
       {quizzes.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {quizzes.map((quiz) => (
-            <QuizCard
-              key={quiz.id}
-              timeZone={timeZone}
-              quiz={{
-                id: quiz.id,
-                title: quiz.title,
-                questionCount: quiz.questionCount,
-                status: quiz.status,
-                favourite: quiz.favourite,
-                archived: quiz.archived,
-                owned: quiz.owned,
-                authorName: quiz.authorName,
-                visibility: quiz.visibility,
-                sessions: counts.get(quiz.id) ?? 0,
-                updatedAt: quiz.updatedAt.toISOString(),
-              }}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {quizzes.map((quiz) => (
+              <QuizCard
+                key={quiz.id}
+                timeZone={timeZone}
+                quiz={{
+                  id: quiz.id,
+                  title: quiz.title,
+                  questionCount: quiz.questionCount,
+                  status: quiz.status,
+                  favourite: quiz.favourite,
+                  archived: quiz.archived,
+                  owned: quiz.owned,
+                  authorName: quiz.authorName,
+                  visibility: quiz.visibility,
+                  sessions: counts.get(quiz.id) ?? 0,
+                  updatedAt: quiz.updatedAt.toISOString(),
+                }}
+              />
+            ))}
+          </div>
+          <Pager basePath="/library" params={{ scope: scope === 'mine' ? undefined : scope, q }} page={page} hasNext={hasNext} />
+        </>
+      ) : page > 1 ? (
+        <Pager basePath="/library" params={{ scope: scope === 'mine' ? undefined : scope, q }} page={page} hasNext={false} />
       ) : (
         <div className="flex flex-col items-center rounded-3xl border border-dashed border-app bg-surface px-6 py-14 text-center">
           <span className="flex size-14 items-center justify-center rounded-2xl bg-nova-100 text-nova-700 dark:bg-nova-900/60 dark:text-nova-200">

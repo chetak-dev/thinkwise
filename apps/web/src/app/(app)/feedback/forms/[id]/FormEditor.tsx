@@ -163,6 +163,8 @@ function clampInt(value: string, min: number, max: number, fallback: number) {
 export function FormEditor({ form, usage }: { form: EditorForm; usage: { events: number; responses: number } }) {
   const [doc, setDoc] = useState<Doc>({ title: form.title, description: form.description, fields: form.fields });
   const [selectedId, setSelectedId] = useState<string | null>(form.fields[0]?.id ?? null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleted, setDeleted] = useState<{ field: FormField; index: number; conditions: Record<string, FormField['condition']> } | null>(null);
   const { fields } = doc;
 
   // Autosave: compare a snapshot of what's on screen with what the server last accepted.
@@ -258,12 +260,36 @@ export function FormEditor({ form, usage }: { form: EditorForm; usage: { events:
   const remove = () => {
     if (!current) return;
     const i = fields.findIndex((f) => f.id === current.id);
+    const conditions = Object.fromEntries(
+      fields.filter((f) => f.condition?.fieldId === current.id).map((f) => [f.id, f.condition]),
+    );
     // Questions that depended on this one go back to always showing.
     setFields((fs) =>
       fs.filter((f) => f.id !== current.id).map((f) => (f.condition?.fieldId === current.id ? { ...f, condition: null } : f)),
     );
     setSelectedId(fields[i + 1]?.id ?? fields[i - 1]?.id ?? null);
+    setConfirmDeleteId(null);
+    setDeleted({ field: current, index: i, conditions });
   };
+
+  const restore = () => {
+    const d = deleted;
+    if (!d) return;
+    setFields((fs) => {
+      if (fs.length >= MAX_FIELDS || fs.some((f) => f.id === d.field.id)) return fs;
+      const relinked = fs.map((f) => (d.conditions[f.id] && !f.condition ? { ...f, condition: d.conditions[f.id]! } : f));
+      const at = Math.min(d.index, relinked.length);
+      return [...relinked.slice(0, at), d.field, ...relinked.slice(at)];
+    });
+    setSelectedId(d.field.id);
+    setDeleted(null);
+  };
+
+  useEffect(() => {
+    if (!deleted) return;
+    const timer = setTimeout(() => setDeleted(null), 10_000);
+    return () => clearTimeout(timer);
+  }, [deleted]);
 
   const conditionSources = current
     ? fields.map((f, i) => ({ ...f, number: i + 1 })).filter((f) => f.id !== current.id && f.type !== 'heading')
@@ -565,29 +591,67 @@ export function FormEditor({ form, usage }: { form: EditorForm; usage: { events:
                 )}
               </div>
 
+              {confirmDeleteId === current.id ? (
+                <div role="alertdialog" aria-labelledby="delete-field-text" className="space-y-3 border-t border-app pt-4">
+                  <p id="delete-field-text" className="text-sm">
+                    This form has {usage.responses} {usage.responses === 1 ? 'response' : 'responses'}. Answers to this question will drop
+                    out of the exports.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-app text-sm font-semibold hover:bg-surface-2"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      autoFocus
+                      onClick={remove}
+                      className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-rose-600 text-sm font-semibold text-white hover:bg-rose-700"
+                    >
+                      <Trash2 className="size-4" aria-hidden="true" />
+                      Delete question
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <div className="flex gap-2 border-t border-app pt-4">
                 <button
                   type="button"
                   disabled={fields.length >= MAX_FIELDS}
                   onClick={duplicate}
-                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-app text-sm font-semibold hover:border-nova-400 disabled:opacity-40"
+                  className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-app text-sm font-semibold hover:border-nova-400 disabled:opacity-40"
                 >
                   <Copy className="size-4" aria-hidden="true" />
                   Duplicate
                 </button>
                 <button
                   type="button"
-                  onClick={remove}
-                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-app text-sm font-semibold text-coral-600 hover:border-coral-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                  onClick={() => (usage.responses > 0 ? setConfirmDeleteId(current.id) : remove())}
+                  className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-app text-sm font-semibold text-coral-600 hover:border-coral-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                 >
                   <Trash2 className="size-4" aria-hidden="true" />
                   Delete
                 </button>
               </div>
+              )}
             </>
           )}
         </aside>
       </div>
+      {deleted && (
+        <div
+          role="status"
+          className="fixed inset-x-0 bottom-4 z-50 mx-auto flex w-fit max-w-[calc(100%-2rem)] items-center gap-4 rounded-2xl bg-ink-900 px-4 py-3 text-sm text-white shadow-lift dark:bg-white dark:text-ink-900"
+        >
+          <span className="min-w-0 truncate">Question deleted</span>
+          <button type="button" onClick={restore} className="shrink-0 rounded-lg px-2 py-1 font-semibold text-nova-300 hover:bg-white/10 dark:text-nova-700 dark:hover:bg-ink-900/10">
+            Undo
+          </button>
+        </div>
+      )}
     </div>
   );
 }

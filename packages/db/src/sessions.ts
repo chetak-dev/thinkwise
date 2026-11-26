@@ -113,14 +113,15 @@ export async function recordResults(db: Db, results: GameResults) {
   });
 }
 
-export async function listSessions(db: Db, hostId: string, limit = 50): Promise<SessionSummary[]> {
+export async function listSessions(db: Db, hostId: string, limit = 50, offset = 0): Promise<SessionSummary[]> {
   await finalizeDueSelfSessions(db, hostId);
   return db
     .select(summaryColumns)
     .from(gameSessions)
     .where(eq(gameSessions.hostId, hostId))
-    .orderBy(desc(gameSessions.createdAt))
-    .limit(limit);
+    .orderBy(desc(gameSessions.createdAt), desc(gameSessions.id))
+    .limit(limit)
+    .offset(offset);
 }
 
 /** The host's sessions that may still be running (recent and not yet reported). */

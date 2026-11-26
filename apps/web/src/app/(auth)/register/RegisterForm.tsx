@@ -80,7 +80,7 @@ export function RegisterForm({ next = '/dashboard' }: { next?: string }) {
         Create account
       </button>
       <p className="text-center text-xs text-muted">
-        Hosts need an account. Players just join with a PIN and a nickname.
+        You’ll use this account to join quizzes. Your scores and answers are saved to your history.
       </p>
       <p className="text-center text-sm text-muted">
         Already have an account?{' '}

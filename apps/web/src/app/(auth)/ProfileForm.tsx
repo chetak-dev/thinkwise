@@ -73,7 +73,7 @@ export function ProfileForm({
       </div>
       <div className="space-y-1.5">
         <label htmlFor="phone" className="block text-sm font-semibold text-app">
-          Phone number
+          Phone number <span className="font-normal text-muted">(optional)</span>
         </label>
         <input
           id="phone"
@@ -81,8 +81,6 @@ export function ProfileForm({
           type="tel"
           inputMode="numeric"
           autoComplete="tel-national"
-          required
-          minLength={10}
           pattern="[0-9]{10}"
           placeholder="9876543210"
           defaultValue={values.phone}
@@ -108,13 +106,12 @@ export function ProfileForm({
       </div>
       <div className="space-y-1.5">
         <label htmlFor="address" className="block text-sm font-semibold text-app">
-          Address
+          Address <span className="font-normal text-muted">(optional)</span>
         </label>
         <textarea
           id="address"
           name="address"
           autoComplete="street-address"
-          required
           rows={3}
           maxLength={300}
           defaultValue={values.address}

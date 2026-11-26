@@ -3,10 +3,14 @@
 import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { ArrowLeft, ArrowRight, CalendarClock, Clock, Feather, Lightbulb, ListChecks, Loader2, Pencil, Timer, Volume2, VolumeX } from 'lucide-react';
+import {
+  ArrowLeft, ArrowRight, CalendarClock, Check, CheckCircle2, Clock, Feather, History, LayoutGrid, Lightbulb, ListChecks, Loader2, Minus,
+  Pencil, RefreshCw, Timer, Volume2, VolumeX, X,
+} from 'lucide-react';
 import { isScored, type PlayerAnswer, type PublicQuestion } from '@thinkwise/shared';
 import type { SelfInfo, SelfPlayerState } from '@thinkwise/db';
 import { Logo } from '@/components/Logo';
+import { Modal } from '@/components/Modal';
 import { PageLoader } from '@/components/PageLoader';
 import { Confetti } from '@/components/game/Confetti';
 import { QuestionImage } from '@/components/game/QuestionImage';
@@ -82,11 +86,15 @@ function SelfFlow() {
   const [index, setIndex] = useState(0);
   const [hintFor, setHintFor] = useState<number | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const offset = useRef(0);
   const opened = useRef(new Set<number>());
   const submitting = useRef(false);
+  // Typed, ordered and multi-pick answers stay on the phone until saved; moving on saves them.
+  const draft = useRef<{ at: number; input: AnswerInput } | null>(null);
+  const flushRef = useRef<() => void>(() => {});
 
   const token = () => (pin ? localStorage.getItem(tokenKey(pin)) : null);
 
@@ -164,6 +172,7 @@ function SelfFlow() {
     async (auto: boolean) => {
       const tok = token();
       if (!tok || submitting.current) return;
+      flushRef.current();
       submitting.current = true;
       setBusy(true);
       await saveQueue.current;
@@ -271,16 +280,16 @@ function SelfFlow() {
       return { ...s, answers };
     });
 
-  const save = (input: AnswerInput | null) => {
+  const save = (input: AnswerInput | null, at = index, advance = true) => {
     const tok = token();
     if (!tok || !state || busy) return;
+    if (draft.current?.at === at) draft.current = null;
     setError(null);
-    const at = index;
     const previous = state.answers[at] ?? null;
     const seq = (saveSeq.current.get(at) ?? 0) + 1;
     saveSeq.current.set(at, seq);
     setAnswer(at, input ? previewAnswer(input) : null);
-    if (input) {
+    if (input && advance) {
       // Go on to the next question still to answer, or to the review once every one has an answer.
       const total = state.questions.length;
       const answered = new Set(Object.keys(state.answers).map(Number)).add(at);
@@ -306,6 +315,26 @@ function SelfFlow() {
         setError(t.saveFailed);
       }
     });
+  };
+
+  const flushDraft = () => {
+    const d = draft.current;
+    draft.current = null;
+    if (!d || !state) return;
+    const saved = state.answers[d.at];
+    if (saved && JSON.stringify(previewAnswer(d.input)) === JSON.stringify(saved)) return;
+    save(d.input, d.at, false);
+  };
+  useEffect(() => {
+    flushRef.current = flushDraft;
+  });
+  const go = (to: number) => {
+    flushDraft();
+    setIndex(to);
+  };
+  const toReview = () => {
+    flushDraft();
+    setStep('review');
   };
 
   const questions = state?.questions ?? [];
@@ -492,52 +521,101 @@ function SelfFlow() {
         )}
 
         {active && state && (
-          <div className="sticky top-0 z-10 -mx-1 mb-4 flex items-center justify-between gap-3 rounded-2xl bg-[var(--bg)]/90 px-1 py-2 backdrop-blur">
-            <div className="min-w-0">
-              <p className="truncate font-display font-bold">{state.title}</p>
-              <p className="text-xs font-semibold text-muted">{t.answeredOf(answeredCount, questions.length)}</p>
+          <div className="sticky top-0 z-10 -mx-1 mb-3 rounded-2xl bg-[var(--bg)]/90 px-1 pb-2 pt-1 backdrop-blur">
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold">{state.title}</p>
+                <p className="truncate text-xs font-semibold text-muted">
+                  {step === 'quiz' ? t.questionOf(index + 1, questions.length) : t.answeredOf(answeredCount, questions.length)}
+                </p>
+              </div>
+              {step === 'quiz' && (
+                <button
+                  type="button"
+                  onClick={() => setPaletteOpen(true)}
+                  aria-label={t.questionList}
+                  title={t.questionList}
+                  className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-app bg-surface px-2.5 text-sm font-semibold hover:bg-surface-2"
+                >
+                  <LayoutGrid className="size-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">{t.questionList}</span>
+                </button>
+              )}
+              <div
+                role="timer"
+                aria-label={t.timeLeft}
+                className={`flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 font-display text-base font-bold tabular-nums ${
+                  lowTime ? 'animate-pulse bg-rose-500/15 text-rose-700 dark:text-rose-300' : 'bg-surface shadow-soft'
+                }`}
+              >
+                <Timer className="size-4" aria-hidden="true" />
+                {formatClock(remaining)}
+              </div>
             </div>
             <div
-              role="timer"
-              aria-label={t.timeLeft}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 font-display text-lg font-bold tabular-nums ${
-                lowTime ? 'animate-pulse bg-rose-500/15 text-rose-700 dark:text-rose-300' : 'bg-surface shadow-soft'
-              }`}
+              role="progressbar"
+              aria-label={t.answeredOf(answeredCount, questions.length)}
+              aria-valuemin={0}
+              aria-valuemax={questions.length}
+              aria-valuenow={answeredCount}
+              className="mt-2 h-1 overflow-hidden rounded-full bg-surface-2"
             >
-              <Timer className="size-4" aria-hidden="true" />
-              {formatClock(remaining)}
+              <div
+                className="h-full rounded-full bg-nova-500 transition-[width] duration-300"
+                style={{ width: `${questions.length ? (answeredCount / questions.length) * 100 : 0}%` }}
+              />
             </div>
           </div>
         )}
 
         {step === 'quiz' && state && question && (
-          <div className="flex flex-1 flex-col gap-4">
-            <nav aria-label={t.questionList} className="flex flex-wrap gap-1.5">
-              {questions.map((q) => {
-                const done = state.answers[q.index] !== undefined;
-                return (
-                  <button
-                    key={q.index}
-                    type="button"
-                    onClick={() => setIndex(q.index)}
-                    aria-current={q.index === index ? 'step' : undefined}
-                    aria-label={`${t.questionOf(q.index + 1, questions.length)}${done ? '' : ` – ${t.notAnswered}`}`}
-                    className={`flex size-9 items-center justify-center rounded-xl text-sm font-bold tabular-nums transition ${
-                      q.index === index
-                        ? 'bg-nova-600 text-white ring-2 ring-nova-300'
-                        : done
-                          ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-200'
-                          : 'bg-surface text-muted shadow-soft'
-                    }`}
-                  >
-                    {q.index + 1}
-                  </button>
-                );
-              })}
-            </nav>
+          <div className="flex flex-1 flex-col gap-3 sm:gap-4">
+            <Modal
+              open={paletteOpen}
+              onClose={() => setPaletteOpen(false)}
+              title={t.questionList}
+              description={t.answeredOf(answeredCount, questions.length)}
+              size="max-w-md"
+            >
+              <nav aria-label={t.questionList} className="grid max-h-[55vh] grid-cols-6 gap-2 overflow-y-auto p-1 sm:grid-cols-8">
+                {questions.map((q) => {
+                  const done = state.answers[q.index] !== undefined;
+                  return (
+                    <button
+                      key={q.index}
+                      type="button"
+                      onClick={() => {
+                        go(q.index);
+                        setPaletteOpen(false);
+                      }}
+                      aria-current={q.index === index ? 'step' : undefined}
+                      aria-label={`${t.questionOf(q.index + 1, questions.length)}${done ? '' : ` – ${t.notAnswered}`}`}
+                      className={`flex aspect-square items-center justify-center rounded-xl text-sm font-bold tabular-nums transition ${
+                        q.index === index
+                          ? 'bg-nova-600 text-white ring-2 ring-nova-300'
+                          : done
+                            ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-200'
+                            : 'border border-app bg-surface text-muted hover:bg-surface-2'
+                      }`}
+                    >
+                      {q.index + 1}
+                    </button>
+                  );
+                })}
+              </nav>
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-muted">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="size-3 rounded bg-emerald-500/40" aria-hidden="true" />
+                  {t.answered}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="size-3 rounded border border-app bg-surface" aria-hidden="true" />
+                  {t.notAnswered}
+                </span>
+              </div>
+            </Modal>
 
-            <div className="glass-panel animate-rise space-y-4 rounded-[2rem] p-6 text-center" key={`q-${index}`}>
-              <p className="text-sm font-semibold text-muted">{t.questionOf(index + 1, questions.length)}</p>
+            <div className="glass-panel animate-rise space-y-3 rounded-3xl p-4 text-center sm:space-y-4 sm:rounded-[2rem] sm:p-6" key={`q-${index}`}>
               {question.imageUrl && (
                 <QuestionImage key={question.imageUrl} url={question.imageUrl} lowData={prefs.lowData} showLabel={t.showImage} className="max-h-48" />
               )}
@@ -576,6 +654,10 @@ function SelfFlow() {
               question={question}
               t={t}
               onSubmit={(a) => void save(a)}
+              onDraft={(input) => {
+                draft.current = input ? { at: index, input } : null;
+              }}
+              dense
               disabled={busy}
               initial={state.answers[index] ?? null}
               submitLabel={t.saveAnswer}
@@ -599,7 +681,7 @@ function SelfFlow() {
             <div className="mt-auto grid grid-cols-[1fr_1.35fr_1fr] gap-2 pt-2 text-sm leading-tight sm:text-base">
               <button
                 type="button"
-                onClick={() => setIndex((i) => Math.max(0, i - 1))}
+                onClick={() => go(Math.max(0, index - 1))}
                 disabled={index === 0}
                 className="flex h-12 min-w-0 items-center justify-center gap-1 rounded-2xl bg-surface px-2 text-center font-bold shadow-soft disabled:opacity-40"
               >
@@ -608,7 +690,7 @@ function SelfFlow() {
               </button>
               <button
                 type="button"
-                onClick={() => setStep('review')}
+                onClick={toReview}
                 className="flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-2xl bg-ink-900 px-2 text-center font-bold text-white dark:bg-white dark:text-ink-900"
               >
                 <ListChecks className="size-4 shrink-0" aria-hidden="true" />
@@ -616,7 +698,7 @@ function SelfFlow() {
               </button>
               <button
                 type="button"
-                onClick={() => (index === questions.length - 1 ? setStep('review') : setIndex(index + 1))}
+                onClick={() => (index === questions.length - 1 ? toReview() : go(index + 1))}
                 className="flex h-12 min-w-0 items-center justify-center gap-1 rounded-2xl bg-surface px-2 text-center font-bold shadow-soft"
               >
                 {t.next}
@@ -628,6 +710,17 @@ function SelfFlow() {
 
         {step === 'review' && state && (
           <div className="flex flex-1 flex-col gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setConfirming(false);
+                setStep('quiz');
+              }}
+              className="inline-flex items-center gap-1.5 self-start rounded-xl bg-surface px-3 py-2 text-sm font-bold shadow-soft hover:bg-surface-2"
+            >
+              <ArrowLeft className="size-4" aria-hidden="true" />
+              {t.backToQuestions}
+            </button>
             <div>
               <h1 className="font-display text-2xl font-bold">{t.reviewTitle}</h1>
               <p className="mt-1 text-sm text-muted">{t.reviewNote}</p>
@@ -736,116 +829,150 @@ function DoneStage({
     return () => window.clearTimeout(id);
   }, [final, state, onCheck]);
   const ranked = state.rules.showLeaderboard && final;
-  const medal = ranked && final.rank <= 3 ? ['🥇', '🥈', '🥉'][final.rank - 1] : '🎉';
   const result = state.result;
+  const stats: { label: string; value: string; of?: string }[] = result
+    ? [
+        ...(ranked ? [{ label: t.yourPlace, value: String(final.rank), of: `/ ${final.players}` }] : []),
+        { label: t.score, value: String(result.score) },
+        { label: t.correctAnswers, value: String(result.correctCount), of: `/ ${result.scoredTotal}` },
+        ...(result.scoredTotal ? [{ label: t.accuracy, value: `${Math.round((result.correctCount / result.scoredTotal) * 100)}%` }] : []),
+      ]
+    : [];
   return (
-    <div className="flex flex-1 flex-col items-center gap-5 text-center">
+    <div className="flex flex-1 flex-col gap-6 pt-2">
       {state.rules.gamification && ranked && final.rank <= 3 && <Confetti />}
-      <div className="animate-pop text-7xl" aria-hidden="true">
-        {final ? medal : '✅'}
-      </div>
-      <h1 className="font-display text-3xl font-bold">{final ? t.allDone : t.submittedTitle}</h1>
-      {timedOut && <p className="font-semibold text-muted">{t.timeUpSubmitted}</p>}
-      {state.rules.completionMessage && <p className="max-w-sm whitespace-pre-line font-semibold">{state.rules.completionMessage}</p>}
-      {result && (
-        <div className={`grid w-full gap-3 ${ranked ? 'grid-cols-3' : 'grid-cols-2'}`}>
-          {ranked && (
-            <div className="rounded-2xl bg-surface p-3 shadow-soft">
-              <div className="font-display text-2xl font-bold tabular-nums">
-                #{final.rank}
-                <span className="text-sm text-muted"> / {final.players}</span>
-              </div>
-              <div className="text-xs font-semibold text-muted">{t.yourPlace}</div>
-            </div>
-          )}
-          <div className="rounded-2xl bg-surface p-3 shadow-soft">
-            <div className="font-display text-2xl font-bold tabular-nums">{result.score}</div>
-            <div className="text-xs font-semibold text-muted">{t.score}</div>
-          </div>
-          <div className="rounded-2xl bg-surface p-3 shadow-soft">
-            <div className="font-display text-2xl font-bold tabular-nums">
-              {result.correctCount}
-              <span className="text-sm text-muted"> / {result.scoredTotal}</span>
-            </div>
-            <div className="text-xs font-semibold text-muted">{t.correctAnswers}</div>
+      <section className="overflow-hidden rounded-3xl border border-app bg-surface shadow-soft">
+        <div className="flex items-start gap-4 p-6">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+            <CheckCircle2 className="size-6" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl font-bold leading-tight">{final ? t.resultsTitle : t.submittedTitle}</h1>
+            <p className="mt-1 truncate text-sm text-muted">{state.title}</p>
+            {timedOut && <p className="mt-2 text-sm font-semibold text-amber-800 dark:text-amber-200">{t.timeUpSubmitted}</p>}
           </div>
         </div>
-      )}
+        {state.rules.completionMessage && (
+          <p className="mx-6 mb-6 whitespace-pre-line border-l-2 border-nova-400 pl-3 text-sm">{state.rules.completionMessage}</p>
+        )}
+        {stats.length > 0 && (
+          <dl className={`grid grid-cols-2 border-t border-app ${stats.length === 4 ? 'sm:grid-cols-4' : stats.length === 3 ? 'sm:grid-cols-3' : ''}`}>
+            {stats.map((s, i) => (
+              <div
+                key={s.label}
+                className={`px-5 py-4 ${i % 2 === 1 ? 'border-l border-app' : ''} ${i >= 2 ? 'border-t border-app sm:border-t-0' : ''} ${
+                  i >= 2 ? 'sm:border-l' : ''
+                }`}
+              >
+                <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{s.label}</dt>
+                <dd className="mt-1 font-display text-2xl font-bold tabular-nums">
+                  {s.value}
+                  {s.of && <span className="ml-1 text-sm font-semibold text-muted">{s.of}</span>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </section>
+
       {!final && (
-        <div className="w-full space-y-3 rounded-2xl bg-nova-500/10 px-4 py-4 text-sm">
-          <p className="font-semibold">
+        <section className="flex flex-col gap-3 rounded-2xl border border-app bg-surface px-5 py-4 text-sm sm:flex-row sm:items-center">
+          <Clock className="hidden size-5 shrink-0 text-muted sm:block" aria-hidden="true" />
+          <p className="flex-1">
             {state.closesAt && state.state !== 'closed' ? t.resultsAfter(formatWhen(state.closesAt, lang)) : t.answersLater}
+            {checked && !checking && (
+              <span role="status" className="mt-1 block text-xs text-muted">
+                {t.resultsNotYet}
+              </span>
+            )}
           </p>
           <button
             type="button"
             disabled={checking}
             onClick={check}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-app bg-surface px-4 font-semibold transition hover:border-nova-400 disabled:opacity-60"
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-app px-4 font-semibold transition hover:bg-surface-2 disabled:opacity-60"
           >
-            {checking && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+            {checking ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="size-4" aria-hidden="true" />}
             {t.checkResults}
           </button>
-          {checked && !checking && (
-            <p role="status" className="text-xs text-muted">
-              {t.resultsNotYet}
-            </p>
-          )}
-        </div>
+        </section>
       )}
+
       {final && final.top.length > 0 && (
-        <div className="w-full rounded-3xl bg-surface p-4 text-left shadow-soft">
-          <p className="mb-2 text-sm font-semibold text-muted">{t.topPlayers}</p>
-          <ol className="space-y-1.5">
-            {final.top.map((p) => (
-              <li key={p.rank} className={`flex items-center gap-2 ${p.nickname === state.me.nickname ? 'font-bold' : ''}`}>
-                <span className="w-6 text-center">{['🥇', '🥈', '🥉'][p.rank - 1] ?? p.rank}</span>
-                <span aria-hidden="true">{p.avatar}</span>
-                <span className="flex-1 truncate font-semibold">{p.nickname}</span>
-                <span className="font-bold tabular-nums">{p.score}</span>
-              </li>
-            ))}
+        <section>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">{t.topPlayers}</h2>
+          <ol className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl border border-app bg-surface">
+            {final.top.map((p) => {
+              const me = p.nickname === state.me.nickname;
+              return (
+                <li key={p.rank} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${me ? 'bg-nova-500/10 font-bold' : ''}`}>
+                  <span className="w-6 text-right font-semibold tabular-nums text-muted">{p.rank}</span>
+                  <span aria-hidden="true">{p.avatar}</span>
+                  <span className="flex-1 truncate font-semibold">{p.nickname}</span>
+                  <span className="font-bold tabular-nums">{p.score}</span>
+                </li>
+              );
+            })}
           </ol>
-        </div>
+        </section>
       )}
+
       {final && (
-        <ol className="w-full space-y-4 text-left">
-          {final.review.map((r) => {
-            const q = state.questions[r.index]!;
-            const scored = isScored(q.type);
-            return (
-              <li key={r.index} className="space-y-3 rounded-3xl border border-app bg-surface/60 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="font-semibold">
-                    <span className="text-muted">{r.index + 1}. </span>
-                    {q.text}
-                  </p>
-                  {scored && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">{t.answerReview}</h2>
+          <ol className="divide-y divide-[var(--border)] overflow-hidden rounded-2xl border border-app bg-surface">
+            {final.review.map((r) => {
+              const q = state.questions[r.index]!;
+              const scored = isScored(q.type);
+              const status = !scored ? null : r.answer === null ? 'none' : r.isCorrect ? 'right' : r.points > 0 ? 'part' : 'wrong';
+              return (
+                <li key={r.index} className="space-y-3 p-4">
+                  <div className="flex items-start gap-3">
                     <span
-                      className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                        r.answer === null
-                          ? 'bg-surface-2 text-muted'
-                          : r.isCorrect
-                            ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-200'
-                            : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                      className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full ${
+                        status === 'right'
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                          : status === 'wrong'
+                            ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                            : status === 'part'
+                              ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                              : 'bg-surface-2 text-muted'
                       }`}
+                      aria-hidden="true"
                     >
-                      {r.answer === null ? t.noAnswer : t.plusPoints(r.points)}
+                      {status === 'right' ? <Check className="size-3.5" /> : status === 'wrong' ? <X className="size-3.5" /> : <Minus className="size-3.5" />}
                     </span>
-                  )}
-                </div>
-                <AnswerSummary question={q} t={t} answer={r.answer} correct={r.correct.length ? r.correct : null} answerKey={r.key} />
-                {r.explanation && (
-                  <p className="whitespace-pre-line text-sm">
-                    <span className="font-bold">{t.why} </span>
-                    {r.explanation}
-                  </p>
-                )}
-              </li>
-            );
-          })}
-        </ol>
+                    <p className="min-w-0 flex-1 font-semibold">
+                      <span className="text-muted">{r.index + 1}. </span>
+                      {q.text}
+                    </p>
+                    {scored && (
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-muted">
+                        {r.answer === null ? t.noAnswer : t.plusPoints(r.points)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="pl-9">
+                    <AnswerSummary question={q} t={t} answer={r.answer} correct={r.correct.length ? r.correct : null} answerKey={r.key} />
+                    {r.explanation && (
+                      <p className="mt-3 whitespace-pre-line text-sm text-muted">
+                        <span className="font-semibold text-app">{t.why} </span>
+                        {r.explanation}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
       )}
-      <Link href="/history" className="font-semibold text-nova-600 underline dark:text-nova-300">
+
+      <Link
+        href="/history"
+        className="inline-flex h-11 items-center justify-center gap-2 self-center rounded-xl border border-app bg-surface px-5 text-sm font-semibold shadow-soft hover:bg-surface-2"
+      >
+        <History className="size-4" aria-hidden="true" />
         {t.myHistory}
       </Link>
     </div>

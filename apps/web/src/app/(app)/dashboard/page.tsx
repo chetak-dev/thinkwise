@@ -64,17 +64,17 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-10">
-      <section className="arena-sheen nova-gradient relative overflow-hidden rounded-[2rem] border border-white/10 p-6 text-white shadow-[0_30px_80px_-30px_rgba(109,74,255,.75)] sm:p-10">
-        <Greeting />
-        <h1 className="mt-1 font-display text-4xl font-bold sm:text-5xl">{firstName} ✨</h1>
-        <p className="mt-3 max-w-xl text-white/85">
-          Write a quiz, put the PIN on the big screen and let everyone play from their phones.
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
+      <section className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <Greeting />
+          <h1 className="mt-1 font-display text-3xl font-bold sm:text-4xl">{firstName}</h1>
+          <p className="mt-2 max-w-xl text-muted">Write a quiz, put the PIN on the big screen and let everyone play from their phones.</p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
           <form action={createQuizAction}>
             <button
               type="submit"
-              className="inline-flex h-12 items-center gap-2 rounded-xl bg-white px-5 font-semibold text-ink-900 transition hover:-translate-y-0.5 hover:bg-nova-50"
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-nova-600 px-5 font-semibold text-white transition hover:bg-nova-700"
             >
               <Plus className="size-5" aria-hidden="true" />
               New quiz
@@ -82,7 +82,7 @@ export default async function DashboardPage() {
           </form>
           <Link
             href="/library?scope=public"
-            className="inline-flex h-12 items-center gap-2 rounded-xl bg-white/15 px-5 font-semibold text-white transition hover:bg-white/25"
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-app bg-surface px-5 font-semibold transition hover:bg-surface-2"
           >
             <Globe className="size-5" aria-hidden="true" />
             Browse public quizzes

@@ -45,6 +45,8 @@ const BTN =
 const BTN_PRIMARY = `${BTN} text-white bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] hover:brightness-110 shadow-[0_10px_30px_-10px_rgb(255_93_115/0.7)] h-14 px-8 text-lg gap-2.5 rounded-2xl w-full`;
 const BTN_OUTLINE = `${BTN} border border-app bg-surface text-app hover:border-nova-400 hover:text-nova-700 dark:hover:text-nova-300 h-11 px-4 text-sm gap-2 rounded-xl`;
 const BTN_DANGER = `${BTN} border border-rose-200 bg-surface text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950 h-11 px-4 text-sm gap-2 rounded-xl w-full`;
+const BTN_BAR = `${BTN} min-w-0 flex-1 text-white bg-[linear-gradient(100deg,#6d4aff,#ff5d73)] h-12 px-4 text-base gap-2 rounded-xl`;
+const BTN_BAR_ICON = `${BTN} size-12 shrink-0 border border-app bg-surface text-app rounded-xl`;
 
 export function HostClient() {
   const [prefs, setPrefs] = usePrefs();
@@ -163,6 +165,15 @@ export function HostClient() {
 
   const { phase, players, settings, question, timer, locked } = state;
   const isLast = question ? question.index + 1 >= question.total : false;
+  // Phones get the main action in a bar pinned to the bottom, so it never scrolls out of reach.
+  const barAction =
+    phase === 'lobby'
+      ? { label: players.length === 0 ? 'Waiting for players' : 'Start game', Icon: Play, disabled: players.length === 0 || status !== 'open', run: () => send({ t: 'host:start' }) }
+      : phase === 'question'
+        ? { label: question && !isScored(question.type) ? 'Show results' : 'Reveal answer', Icon: Eye, disabled: false, run: () => send({ t: 'host:reveal' }) }
+        : phase === 'reveal' || phase === 'leaderboard'
+          ? { label: isLast ? 'Finish' : 'Next question', Icon: isLast ? Flag : SkipForward, disabled: false, run: () => send({ t: 'host:next' }) }
+          : null;
   const query = search.trim().toLocaleLowerCase();
   const visiblePlayers = query ? players.filter((p) => p.nickname.toLocaleLowerCase().includes(query)) : players;
 
@@ -281,7 +292,7 @@ export function HostClient() {
           className="space-y-4 border-t border-app bg-surface/90 p-4 backdrop-blur-xl lg:w-80 lg:shrink-0 lg:border-l lg:border-t-0"
         >
           {phase === 'lobby' && (
-            <div className="space-y-2">
+            <div className="hidden space-y-2 lg:block">
               <button
                 type="button"
                 disabled={players.length === 0 || status !== 'open'}
@@ -296,10 +307,12 @@ export function HostClient() {
 
           {phase === 'question' && (
             <div className="space-y-2">
-              <button type="button" onClick={() => send({ t: 'host:reveal' })} className={BTN_PRIMARY}>
-                <Eye className="size-5" aria-hidden="true" />
-                {question && !isScored(question.type) ? 'Show results now' : 'Reveal answer now'}
-              </button>
+              <div className="hidden lg:block">
+                <button type="button" onClick={() => send({ t: 'host:reveal' })} className={BTN_PRIMARY}>
+                  <Eye className="size-5" aria-hidden="true" />
+                  {question && !isScored(question.type) ? 'Show results now' : 'Reveal answer now'}
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -326,10 +339,12 @@ export function HostClient() {
                   Show leaderboard
                 </button>
               )}
-              <button type="button" onClick={() => send({ t: 'host:next' })} className={BTN_PRIMARY}>
-                {isLast ? <Flag className="size-5" aria-hidden="true" /> : <SkipForward className="size-5" aria-hidden="true" />}
-                {isLast ? 'Finish' : 'Next question'}
-              </button>
+              <div className="hidden lg:block">
+                <button type="button" onClick={() => send({ t: 'host:next' })} className={BTN_PRIMARY}>
+                  {isLast ? <Flag className="size-5" aria-hidden="true" /> : <SkipForward className="size-5" aria-hidden="true" />}
+                  {isLast ? 'Finish' : 'Next question'}
+                </button>
+              </div>
               {endControls}
             </div>
           )}
@@ -504,6 +519,25 @@ export function HostClient() {
           </div>
         </aside>
       </main>
+
+      {barAction && (
+        <div className="sticky bottom-0 z-20 flex gap-2 border-t border-app bg-surface/95 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
+          {phase === 'question' && (
+            <button
+              type="button"
+              onClick={() => send({ t: 'host:pause', paused: !timer?.paused })}
+              aria-label={timer?.paused ? 'Resume' : 'Pause'}
+              className={BTN_BAR_ICON}
+            >
+              {timer?.paused ? <Play className="size-5" aria-hidden="true" /> : <Pause className="size-5" aria-hidden="true" />}
+            </button>
+          )}
+          <button type="button" disabled={barAction.disabled} onClick={barAction.run} className={BTN_BAR}>
+            <barAction.Icon className="size-5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{barAction.label}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

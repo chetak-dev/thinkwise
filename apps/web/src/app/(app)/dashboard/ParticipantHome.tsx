@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { ArrowRight, History, KeyRound, UserRound } from 'lucide-react';
+import { ArrowRight, History } from 'lucide-react';
 import { getDb, participantHistory, type PublicUser } from '@thinkwise/db';
 import { Greeting } from '@/components/Greeting';
+import { HeroPinForm } from '@/components/HeroPinForm';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDateTime } from '@/lib/time';
 
@@ -15,34 +16,14 @@ export async function ParticipantHome({ user }: { user: PublicUser }) {
 
   return (
     <div className="space-y-10">
-      <section className="arena-sheen nova-gradient relative overflow-hidden rounded-[2rem] border border-white/10 p-6 text-white shadow-[0_30px_80px_-30px_rgba(109,74,255,.75)] sm:p-10">
-        <Greeting />
-        <h1 className="mt-1 font-display text-4xl font-bold sm:text-5xl">{firstName} ✨</h1>
-        <p className="mt-3 max-w-xl text-white/85">
-          Got a game PIN or a quiz link? Join in a few seconds and see how you score.
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link
-            href="/play"
-            className="inline-flex h-12 items-center gap-2 rounded-xl bg-white px-5 font-semibold text-ink-900 transition hover:-translate-y-0.5 hover:bg-nova-50"
-          >
-            <KeyRound className="size-5" aria-hidden="true" />
-            Join a quiz
-          </Link>
-          <Link
-            href="/history"
-            className="inline-flex h-12 items-center gap-2 rounded-xl bg-white/15 px-5 font-semibold text-white transition hover:bg-white/25"
-          >
-            <History className="size-5" aria-hidden="true" />
-            My quiz history
-          </Link>
-          <Link
-            href="/profile"
-            className="inline-flex h-12 items-center gap-2 rounded-xl bg-white/15 px-5 font-semibold text-white transition hover:bg-white/25"
-          >
-            <UserRound className="size-5" aria-hidden="true" />
-            My profile
-          </Link>
+      <section className="grid gap-6 lg:grid-cols-[1fr_minmax(0,380px)] lg:items-center">
+        <div className="min-w-0">
+          <Greeting />
+          <h1 className="mt-1 font-display text-3xl font-bold sm:text-4xl">{firstName}</h1>
+          <p className="mt-2 max-w-xl text-muted">Enter the PIN your organiser shared, or open their link, to join a quiz.</p>
+        </div>
+        <div className="rounded-3xl border border-app bg-surface p-5 shadow-soft">
+          <HeroPinForm label="Join a quiz" hint="6-digit live game or 7-digit self-paced PIN" />
         </div>
       </section>
 

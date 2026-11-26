@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
-export function HeroPinForm() {
+export function HeroPinForm({ label = 'Joining a game?', hint }: { label?: string; hint?: string }) {
   const router = useRouter();
   const [pin, setPin] = useState('');
 
@@ -16,8 +16,9 @@ export function HeroPinForm() {
   return (
     <form onSubmit={submit} className="space-y-3">
       <label htmlFor="hero-pin" className="block text-center font-display text-lg font-bold">
-        Joining a game?
+        {label}
       </label>
+      {hint && <p className="-mt-2 text-center text-sm text-muted">{hint}</p>}
       <div className="flex gap-2">
         <input
           id="hero-pin"

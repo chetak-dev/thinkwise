@@ -90,7 +90,8 @@ export async function listQuizzes(
     scope = 'mine',
     q = '',
     limit = 100,
-  }: { scope?: LibraryScope; q?: string; limit?: number } = {},
+    offset = 0,
+  }: { scope?: LibraryScope; q?: string; limit?: number; offset?: number } = {},
 ): Promise<QuizSummary[]> {
   const fav = and(eq(favourites.quizId, quizzes.id), eq(favourites.userId, userId));
   const owned = eq(quizzes.ownerId, userId);
@@ -122,8 +123,9 @@ export async function listQuizzes(
     .innerJoin(users, eq(users.id, quizzes.ownerId))
     .leftJoin(favourites, fav)
     .where(and(byScope[scope], searchFilter(q, userId)))
-    .orderBy(desc(quizzes.updatedAt))
-    .limit(limit);
+    .orderBy(desc(quizzes.updatedAt), desc(quizzes.id))
+    .limit(limit)
+    .offset(offset);
 }
 
 export async function countQuizzes(db: Db, ownerId: string) {

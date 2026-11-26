@@ -166,11 +166,11 @@ export default async function ResponsesPage({
           <p className="text-muted">{plural(subs.length, 'response', 'responses')}{chosen ? ' in this launch' : ' across all launches'}.</p>
         </div>
         <a
-          href={`/api/feedback/events/${event.id}/export`}
+          href={`/api/feedback/events/${event.id}/export${chosen ? `?session=${chosen}` : ''}`}
           className="inline-flex h-10 items-center gap-2 rounded-xl border border-app bg-surface px-4 text-sm font-semibold transition hover:-translate-y-0.5 hover:border-nova-400"
         >
           <Download className="size-4" aria-hidden="true" />
-          Export CSV
+          {chosen ? 'Export this launch' : 'Export CSV'}
         </a>
       </div>
 

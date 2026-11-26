@@ -22,19 +22,22 @@ export const ProfileInput = z.object({
   phone: z
     .string()
     .trim()
-    .regex(/^\d{10}$/, 'Enter a 10-digit phone number, digits only.'),
+    .regex(/^(\d{10})?$/, 'Enter a 10-digit phone number, digits only, or leave it blank.')
+    .transform((v) => v || null),
   address: z
     .string()
     .trim()
-    .min(10, 'Please enter your full address.')
-    .max(ADDRESS_MAX, `Use at most ${ADDRESS_MAX} characters.`),
+    .max(ADDRESS_MAX, `Use at most ${ADDRESS_MAX} characters.`)
+    .transform((v) => v || null),
   gender: GenderInput,
 });
 export type ProfileInput = z.input<typeof ProfileInput>;
 
 export function profileComplete(user: Pick<PublicUser, 'name' | 'phone' | 'address' | 'gender'> | null | undefined) {
-  return !!user && !!user.name?.trim() && !!user.phone?.trim() && !!user.address?.trim() &&
-    (user.gender === null || SavedGender.safeParse(user.gender).success);
+  if (!user || !user.name?.trim()) return false;
+  // Profiles finished before gender was asked have a phone and address but no gender.
+  if (user.gender === null) return !!user.phone?.trim() && !!user.address?.trim();
+  return SavedGender.safeParse(user.gender).success;
 }
 
 export type ProfileResult =
