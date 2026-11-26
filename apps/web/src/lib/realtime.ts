@@ -45,6 +45,19 @@ export async function createLiveGame(quiz: PlayableQuiz, settings?: StartOptions
   return (await res.json()) as LiveGame;
 }
 
+export async function endLiveGame(gameId: string): Promise<boolean> {
+  if (!REALTIME_SECRET) throw new Error('REALTIME_SECRET is not configured');
+  const res = await fetch(`${REALTIME_HTTP_URL}/games/${encodeURIComponent(gameId)}/end`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${REALTIME_SECRET}` },
+    cache: 'no-store',
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (res.status === 404) return false;
+  if (!res.ok) throw new Error(`Game server returned ${res.status}`);
+  return true;
+}
+
 export type LivePhase = 'lobby' | 'question' | 'reveal' | 'leaderboard' | 'finished';
 
 export async function liveParticipantInfo(pin: string): Promise<{

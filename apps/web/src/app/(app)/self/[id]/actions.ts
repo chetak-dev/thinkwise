@@ -6,7 +6,7 @@ import { requireHost } from '@/lib/session';
 
 export async function closeSelfAction(id: string) {
   const user = await requireHost();
-  const ok = await closeSelfSession(getDb(), user.id, String(id));
+  const ok = await closeSelfSession(getDb(), user, String(id));
   revalidatePath(`/self/${id}`);
   revalidatePath('/dashboard');
   return { ok: !!ok };

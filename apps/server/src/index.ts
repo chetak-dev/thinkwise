@@ -1384,6 +1384,14 @@ const http = createServer((req, res) => {
     return;
   }
   if (req.method === 'POST' && req.url === '/games') return createGameFromRequest(req, res);
+  const endMatch = req.method === 'POST' ? req.url?.match(/^\/games\/([0-9a-f-]{36})\/end$/) : null;
+  if (endMatch) {
+    if (!bearerOk(req.headers.authorization)) return json(res, 401, { error: 'unauthorized' });
+    const game = games.get(endMatch[1]!);
+    if (!game) return json(res, 404, { error: 'not_found' });
+    finish(game);
+    return json(res, 200, { ended: true });
+  }
   if (req.method === 'GET' && req.url?.startsWith('/games/info?')) {
     if (!bearerOk(req.headers.authorization)) return json(res, 401, { error: 'unauthorized' });
     const pin = new URL(req.url, 'http://local').searchParams.get('pin') ?? '';

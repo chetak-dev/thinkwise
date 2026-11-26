@@ -73,7 +73,7 @@ export function ProfileForm({
       </div>
       <div className="space-y-1.5">
         <label htmlFor="phone" className="block text-sm font-semibold text-app">
-          Phone number <span className="font-normal text-muted">(optional)</span>
+          Phone number
         </label>
         <input
           id="phone"
@@ -106,7 +106,7 @@ export function ProfileForm({
       </div>
       <div className="space-y-1.5">
         <label htmlFor="address" className="block text-sm font-semibold text-app">
-          Address <span className="font-normal text-muted">(optional)</span>
+          Address
         </label>
         <textarea
           id="address"

@@ -2,7 +2,7 @@ import { and, desc, eq, gt, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { GameResults, PlayableQuiz, SessionStatus } from '@thinkwise/shared';
 import type { Db } from './client';
-import { auditLog, gameSessions, liveAttempts, quizzes, sessionPlayers } from './schema';
+import { auditLog, gameSessions, liveAttempts, quizzes, sessionPlayers, users } from './schema';
 import { finalizeDueSelfSessions } from './selfSessions';
 
 const SessionId = z.uuid();
@@ -122,6 +122,36 @@ export async function listSessions(db: Db, hostId: string, limit = 50, offset = 
     .orderBy(desc(gameSessions.createdAt), desc(gameSessions.id))
     .limit(limit)
     .offset(offset);
+}
+
+export interface AdminRunningSession extends SessionSummary {
+  hostId: string;
+  hostName: string;
+  hostEmail: string;
+}
+
+/** Site-admin view of games that still need a host action. */
+export async function listAdminRunningSessions(db: Db, limit = 50): Promise<AdminRunningSession[]> {
+  return db
+    .select({
+      ...summaryColumns,
+      hostId: gameSessions.hostId,
+      hostName: users.name,
+      hostEmail: users.email,
+    })
+    .from(gameSessions)
+    .innerJoin(users, eq(users.id, gameSessions.hostId))
+    .where(
+      and(
+        eq(gameSessions.status, 'live'),
+        or(
+          and(eq(gameSessions.mode, 'live'), gt(gameSessions.createdAt, sql`now() - interval '12 hours'`)),
+          eq(gameSessions.mode, 'self'),
+        ),
+      ),
+    )
+    .orderBy(desc(gameSessions.createdAt))
+    .limit(limit);
 }
 
 /** The host's sessions that may still be running (recent and not yet reported). */

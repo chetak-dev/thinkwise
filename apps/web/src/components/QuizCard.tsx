@@ -90,7 +90,7 @@ export function QuizCard({ quiz, timeZone }: { quiz: QuizCardData; timeZone: str
 
   const quizName = quiz.title.trim() || 'Untitled quiz';
   const remove = () => {
-    if (!confirmMatches(typed, quizName)) return;
+    if (!confirmMatches(typed, 'DELETE')) return;
     setConfirmOpen(false);
     startTransition(async () => {
       await deleteQuizAction(quiz.id);
@@ -282,7 +282,7 @@ export function QuizCard({ quiz, timeZone }: { quiz: QuizCardData; timeZone: str
           </h2>
           <p className="mt-2 text-sm text-muted">This removes the quiz and its questions for good. Games already played aren’t affected.</p>
           <div className="mt-4">
-            <TypeToConfirm expected={quizName} value={typed} onChange={setTyped} onEnter={remove} />
+            <TypeToConfirm expected="DELETE" value={typed} onChange={setTyped} onEnter={remove} />
           </div>
           <div className="mt-6 flex justify-end gap-2">
             <button type="button" onClick={() => setConfirmOpen(false)} className="h-10 rounded-xl border border-app px-4 text-sm font-semibold hover:bg-surface-2">
@@ -291,7 +291,7 @@ export function QuizCard({ quiz, timeZone }: { quiz: QuizCardData; timeZone: str
             <button
               type="button"
               onClick={remove}
-              disabled={!confirmMatches(typed, quizName)}
+              disabled={!confirmMatches(typed, 'DELETE')}
               className="h-10 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Delete quiz

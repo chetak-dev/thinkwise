@@ -89,8 +89,10 @@ function pointsLabel(p: number) {
 
 const freshQuestion = (type: DraftQuestion['type'] = 'mc') => newQuestion(type, crypto.randomUUID());
 
-const SELECT_CLASS =
-  'h-10 w-full rounded-xl border border-app bg-surface px-3 text-sm font-medium focus:border-nova-400 focus:outline-none';
+function isEmptyQuiz(doc: Doc) {
+  return doc.questions.length > 0 && doc.questions.every((q) => !q.text.trim());
+}
+const SELECT_CLASS ='h-10 w-full rounded-xl border border-app bg-surface px-3 text-sm font-medium focus:border-nova-400 focus:outline-none';
 const ICON_BTN =
   'inline-flex size-10 items-center justify-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-app disabled:opacity-40 sm:size-9';
 // Question-strip actions hide until hover only where a mouse can hover; touch screens always see them.
@@ -174,6 +176,15 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
       document.removeEventListener('keydown', escape);
     };
   }, [moreOpen]);
+
+  useEffect(() => {
+    const discardIfEmpty = () => {
+      if (!isEmptyQuiz(history.present)) return;
+      void fetch(`/api/quizzes/${quiz.id}/discard-empty`, { method: 'POST', keepalive: true });
+    };
+    window.addEventListener('pagehide', discardIfEmpty);
+    return () => window.removeEventListener('pagehide', discardIfEmpty);
+  }, [history.present, quiz.id]);
 
   const commit = useCallback((change: (doc: Doc) => Doc, groupKey: string | null = null) => {
     const now = Date.now();
@@ -421,7 +432,11 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
 
   const goBack = async (e: React.MouseEvent) => {
     e.preventDefault();
-    await flush();
+    if (isEmptyQuiz(history.present)) {
+      await fetch(`/api/quizzes/${quiz.id}/discard-empty`, { method: 'POST' });
+    } else {
+      await flush();
+    }
     router.push('/library');
   };
 

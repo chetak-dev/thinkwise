@@ -14,6 +14,7 @@ const self = await import('../src/selfSessions');
 const logic = await import('../src/selfPaced');
 const part = await import('../src/participation');
 const profile = await import('../src/profile');
+const admin = await import('../src/admin');
 const { users } = await import('../src/schema');
 
 const handle = openDb();
@@ -118,6 +119,13 @@ test('participants join with the 7-digit PIN, save, change and submit; results w
   assert.equal(view?.participants.find((p) => p.nickname === 'Arjun')?.score, 1000);
   assert.equal(await self.selfHostView(db, other.id, id, at(3 * MIN)), null, 'only the host sees it');
   assert.equal((await s.listRunningSessions(db, host.id))[0]?.id, id, 'open sessions show as running');
+});
+
+test('site admins may end another host’s self-paced game, ordinary hosts may not', async () => {
+  const { id } = await open();
+  assert.equal(await self.closeSelfSession(db, other.id, id, at(MIN)), false);
+  assert.equal(await self.closeSelfSession(db, { id: other.id, email: admin.SITE_ADMIN_EMAILS[0]! }, id, at(MIN)), true);
+  assert.equal((await s.listRunningSessions(db, host.id)).some((game) => game.id === id), false);
 });
 
 test('time running out submits the attempt; closing finalises results into the report', async () => {

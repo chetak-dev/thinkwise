@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, ShieldCheck, ShieldOff } from 'lucide-react';
+import { ChevronDown, Loader2, ShieldCheck, ShieldOff } from 'lucide-react';
 import { GENDER_LABELS } from '@thinkwise/shared';
 import type { AdminUserRow } from '@thinkwise/db';
 import { setAdminAction } from './actions';
@@ -60,15 +60,36 @@ export function AdminUsers({ users, dates }: { users: AdminUserRow[]; dates: Rec
       </button>
     );
 
-  const details = (u: AdminUserRow) => (
-    <>
-      <p className="font-semibold">{u.name}</p>
-      <p className="break-all text-xs text-muted">{u.email}</p>
-      {u.gender && <p className="text-xs text-muted">Gender: {GENDER_LABELS[u.gender]}</p>}
-      {u.phone && <p className="text-xs text-muted">{u.phone}</p>}
-      {u.address && <p className="max-w-xs whitespace-pre-line text-xs text-muted">{u.address}</p>}
-    </>
+  const identity = (u: AdminUserRow) => (
+    <div className="min-w-0">
+      <p className="truncate font-semibold">{u.name}</p>
+      <p className="truncate text-xs text-muted">{u.email}</p>
+    </div>
   );
+
+  const details = (u: AdminUserRow) => {
+    const rows = [
+      ['Gender', u.gender ? GENDER_LABELS[u.gender] : 'Not provided'],
+      ['Phone', u.phone || 'Not provided'],
+      ['Address', u.address || 'Not provided'],
+    ];
+    return (
+      <details className="group mt-1 text-left">
+        <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-semibold text-nova-700 hover:underline dark:text-nova-300">
+          Contact details
+          <ChevronDown className="size-3.5 transition group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <dl className="mt-2 grid gap-2 rounded-xl bg-surface-2 p-3 sm:max-w-xl sm:grid-cols-[5rem_minmax(0,1fr)]">
+          {rows.map(([label, value]) => (
+            <div key={label} className="contents">
+              <dt className="text-xs font-semibold text-muted">{label}</dt>
+              <dd className="break-words whitespace-pre-wrap text-xs text-app">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
+    );
+  };
 
   return (
     <div className="space-y-3">
@@ -81,12 +102,13 @@ export function AdminUsers({ users, dates }: { users: AdminUserRow[]; dates: Rec
       <ul className="space-y-3 sm:hidden">
         {users.length === 0 && <li className="rounded-2xl border border-app bg-surface px-5 py-8 text-center text-muted">No matching accounts.</li>}
         {users.map((u) => (
-          <li key={u.id} className="space-y-3 rounded-2xl border border-app bg-surface p-4 shadow-soft">
+          <li key={u.id} className="rounded-2xl border border-app bg-surface px-4 py-3">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">{details(u)}</div>
+              {identity(u)}
               <div className="shrink-0">{role(u)}</div>
             </div>
-            <div className="flex items-center justify-between gap-3 border-t border-app pt-3">
+            {details(u)}
+            <div className="mt-3 flex items-center justify-between gap-3 border-t border-app pt-3">
               <span className="text-xs text-muted">Joined {dates[u.id]}</span>
               {action(u)}
             </div>
@@ -112,11 +134,14 @@ export function AdminUsers({ users, dates }: { users: AdminUserRow[]; dates: Rec
               </tr>
             )}
             {users.map((u) => (
-              <tr key={u.id}>
-                <td className="px-5 py-3.5">{details(u)}</td>
-                <td className="px-5 py-3.5 text-muted">{dates[u.id]}</td>
-                <td className="px-5 py-3.5">{role(u)}</td>
-                <td className="px-5 py-3.5 text-right">{action(u)}</td>
+              <tr key={u.id} className="align-top">
+                <td className="px-5 py-3">
+                  {identity(u)}
+                  {details(u)}
+                </td>
+                <td className="whitespace-nowrap px-5 py-3 text-xs text-muted">{dates[u.id]}</td>
+                <td className="px-5 py-3">{role(u)}</td>
+                <td className="px-5 py-3 text-right">{action(u)}</td>
               </tr>
             ))}
           </tbody>

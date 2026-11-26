@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
 import { Search } from 'lucide-react';
-import { getDb, listUsersForAdmin } from '@thinkwise/db';
+import { getDb, listAdminRunningSessions, listUsersForAdmin } from '@thinkwise/db';
 import { requireSiteAdmin } from '@/lib/session';
 import { getTimeZone } from '@/lib/timeZone';
 import { formatDate } from '@/lib/time';
 import { AdminUsers } from './AdminUsers';
+import { AdminActiveGames } from './AdminActiveGames';
 import { Pager, parsePage } from '@/components/Pager';
 
 export const metadata: Metadata = { title: 'Admin · ThinkWise' };
@@ -15,9 +16,10 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   await requireSiteAdmin('/admin');
   const { q = '', page: rawPage } = await searchParams;
   const page = parsePage(rawPage);
-  const [timeZone, rows] = await Promise.all([
+  const [timeZone, rows, games] = await Promise.all([
     getTimeZone(),
     listUsersForAdmin(getDb(), String(q), PAGE_SIZE + 1, (page - 1) * PAGE_SIZE),
+    listAdminRunningSessions(getDb()),
   ]);
   const hasNext = rows.length > PAGE_SIZE;
   const users = rows.slice(0, PAGE_SIZE);
@@ -33,6 +35,13 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         Admins can create, host and run live and self-paced quizzes. Everyone else can join and take quizzes. Site admins are fixed and
         always keep access.
       </p>
+      <AdminActiveGames games={games} />
+      <div className="flex flex-wrap items-end justify-between gap-3 border-t border-app pt-6">
+        <div>
+          <h2 className="font-display text-xl font-bold">Users</h2>
+          <p className="text-sm text-muted">{users.length} shown on this page</p>
+        </div>
+      </div>
       <form className="flex max-w-md gap-2" role="search">
         <label className="relative min-w-0 flex-1">
           <span className="sr-only">Search by name, email or phone</span>

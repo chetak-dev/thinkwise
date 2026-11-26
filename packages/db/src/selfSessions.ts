@@ -3,6 +3,8 @@ import { and, asc, desc, eq, isNull, lte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { AVATARS, NICKNAME_MAX, TRACK_IDS, isScored, quizLanguages, translatedQuiz, type AnswerKey, type PlayerAnswer, type PublicQuestion, type PublicRules, type TrackId } from '@thinkwise/shared';
 import type { Db } from './client';
+import type { PublicUser } from './auth';
+import { isSiteAdmin } from './admin';
 import { auditLog, gameSessions, selfAttempts, sessionPlayers } from './schema';
 import {
   LayoutView,
@@ -649,21 +651,28 @@ export async function selfHostView(db: Db, hostId: string, id: string, now = new
   };
 }
 
-async function ownsLiveSelf(db: Db, hostId: string, id: string) {
+async function ownsLiveSelf(db: Db, actor: Pick<PublicUser, 'id' | 'email'>, id: string) {
   if (!SessionId.safeParse(id).success) return false;
+  const owner = isSiteAdmin(actor) ? undefined : eq(gameSessions.hostId, actor.id);
   const [s] = await db
     .select({ id: gameSessions.id })
     .from(gameSessions)
-    .where(and(eq(gameSessions.id, id), eq(gameSessions.hostId, hostId), eq(gameSessions.mode, 'self'), eq(gameSessions.status, 'live')))
+    .where(and(eq(gameSessions.id, id), owner, eq(gameSessions.mode, 'self'), eq(gameSessions.status, 'live')))
     .limit(1);
   return !!s;
 }
 
-/** Ends a self-paced session now, whatever its closing time. */
-export async function closeSelfSession(db: Db, hostId: string, id: string, now = new Date()) {
-  if (!(await ownsLiveSelf(db, hostId, id))) return false;
+/** Ends a self-paced session now. Owners can end their own; site admins can end any. */
+export async function closeSelfSession(
+  db: Db,
+  actor: string | Pick<PublicUser, 'id' | 'email'>,
+  id: string,
+  now = new Date(),
+) {
+  const user = typeof actor === 'string' ? { id: actor, email: '' } : actor;
+  if (!(await ownsLiveSelf(db, user, id))) return false;
   const closed = await finalizeSelfSession(db, id, now, true);
-  if (closed) await db.insert(auditLog).values({ userId: hostId, action: 'session.close', meta: { sessionId: id } });
+  if (closed) await db.insert(auditLog).values({ userId: user.id, action: 'session.close', meta: { sessionId: id } });
   return closed;
 }
 
