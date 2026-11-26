@@ -1146,7 +1146,7 @@ export function QuizEditor({ quiz }: { quiz: EditorQuiz }) {
               <label className="block space-y-1.5 text-sm font-semibold">
                 Points
                 <select value={current.points} onChange={(e) => updateCurrent({ points: Number(e.target.value) })} className={SELECT_CLASS}>
-                  {POINT_VALUES.map((p) => (
+                  {[...new Set<number>([...POINT_VALUES, current.points])].sort((a, b) => a - b).map((p) => (
                     <option key={p} value={p}>
                       {pointsLabel(p)}
                     </option>

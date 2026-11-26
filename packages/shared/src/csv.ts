@@ -6,7 +6,8 @@ import {
   MAX_QUESTIONS,
   MIN_OPTIONS,
   OPTION_TEXT_MAX,
-  POINT_VALUES,
+  POINTS_MAX,
+  isPointValue,
   QUESTION_TEXT_MAX,
   TAGS_MAX,
   TIME_LIMITS_S,
@@ -270,7 +271,7 @@ export function csvToQuestions(text: string, makeId: () => string): CsvImport {
     const points = get('points');
     if (points) {
       const p = Number(points);
-      if (!(POINT_VALUES as readonly number[]).includes(p)) return fail(`“points” must be one of ${POINT_VALUES.join(', ')}.`);
+      if (!isPointValue(p)) return fail(`“points” must be a whole number from 0 to ${POINTS_MAX}.`);
       q.points = p;
     }
     q.explanation = get('explanation').slice(0, EXPLANATION_MAX);

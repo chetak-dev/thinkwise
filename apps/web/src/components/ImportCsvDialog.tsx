@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { Download, FileUp, Loader2 } from 'lucide-react';
-import { CSV_COLUMNS, CSV_MAX_BYTES, POINT_VALUES, TIME_LIMITS_S } from '@thinkwise/shared';
+import { CSV_COLUMNS, CSV_MAX_BYTES, POINTS_MAX, TIME_LIMITS_S } from '@thinkwise/shared';
 import { Modal } from '@/components/Modal';
 import { downloadQuestionTemplate, readQuestionWorkbook } from '@/lib/questionWorkbook';
 
@@ -124,7 +124,7 @@ export function ImportCsvDialog({
             </li>
             <li>
               <code>correct</code> is A, B, C or D. <code>time</code> is one of {TIME_LIMITS_S.join(', ')} seconds and{' '}
-              <code>points</code> one of {POINT_VALUES.join(', ')} (blank means 20 s and 1000). In the other tabs these can be left blank
+              <code>points</code> a whole number from 0 to {POINTS_MAX} (blank means 20 s and 1000). In the other tabs these can be left blank
               to copy the first tab.
             </li>
             <li>

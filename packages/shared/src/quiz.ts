@@ -37,7 +37,12 @@ export function countWords(value: string) {
 export const RATING_MIN_VALUES = [0, 1] as const;
 export const RATING_MAX_VALUES = [3, 4, 5, 6, 7, 8, 9, 10] as const;
 export const TIME_LIMITS_S = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 300] as const;
+/** Editor presets; any whole number from 0 to POINTS_MAX is accepted. */
 export const POINT_VALUES = [0, 100, 250, 500, 1000, 2000] as const;
+export const POINTS_MAX = 10000;
+export function isPointValue(p: number) {
+  return Number.isInteger(p) && p >= 0 && p <= POINTS_MAX;
+}
 export const PENALTY_VALUES = [0, 100, 250, 500, 1000] as const;
 export const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
 export const MAX_OPTIONS = 6;
@@ -172,7 +177,7 @@ const TimeLimitMs = z
 const Points = z
   .number()
   .int()
-  .refine((p) => (POINT_VALUES as readonly number[]).includes(p), 'Unsupported points value');
+  .refine(isPointValue, `Points must be a whole number from 0 to ${POINTS_MAX}`);
 const Penalty = z
   .number()
   .int()

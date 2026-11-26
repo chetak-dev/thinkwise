@@ -133,7 +133,7 @@ test('reports each bad row with its row number and keeps the good ones', () => {
     'word_cloud,Too many words,,,9,,',
     'banana,What?,A,B,1,,',
     'single,Bad time,A,B,1,7,',
-    'single,Bad points,A,B,1,,999',
+    'single,Bad points,A,B,1,,10001',
   ].join('\n');
   const { questions, errors } = csvToQuestions(csv, id);
   assert.equal(questions.length, 1, 'headers are case-insensitive; good rows survive');
@@ -278,17 +278,17 @@ test('playable quizzes enforce the shape of each question type', () => {
 
 test('multilingual rows say exactly which cell is wrong', () => {
   const head = 'question_id,language,question,option_a,option_b,option_c,option_d,correct,time,points,explanation';
-  const bad = csvToQuestions(`${head}\n1,English,Q?,Yes,No,,,A,20,10,\n2,English,Q2?,Yes,,No,,E,7,1000,`, id);
+  const bad = csvToQuestions(`${head}\n1,English,Q?,Yes,No,,,A,20,10.5,\n2,English,Q2?,Yes,,No,,E,7,1000,`, id);
   assert.equal(bad.questions.length, 0);
-  assert.match(bad.errors[0]!.message, /.points. is 10; use one of 0, 100, 250, 500, 1000, 2000/);
+  assert.match(bad.errors[0]!.message, /.points. is 10.5; use a whole number from 0 to 10000/);
   assert.equal(bad.errors[0]!.row, 2);
   const second = bad.errors[1]!.message;
   assert.match(second, /option_b. is empty/);
   assert.match(second, /.correct. must be one letter/);
   assert.match(second, /.time. is 7/);
-  const good = csvToQuestions(`${head}\n1,English,Q?,Yes,No,,,A,20,100,\n1,Odia,Q?,Haan,Na,,,A,20,100,`, id);
+  const good = csvToQuestions(`${head}\n1,English,Q?,Yes,No,,,A,20,10,\n1,Odia,Q?,Haan,Na,,,A,20,10,`, id);
   assert.deepEqual(good.errors, []);
-  assert.equal(good.questions[0]!.points, 100);
+  assert.equal(good.questions[0]!.points, 10);
 });
 
 test('one tab per language imports as translations of the same questions', () => {

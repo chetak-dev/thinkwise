@@ -1,6 +1,6 @@
 import {
-  DraftQuestion, EXPLANATION_MAX, MAX_QUESTIONS, OPTION_TEXT_MAX, POINT_VALUES, QUESTION_TEXT_MAX, QuestionTranslation, TIME_LIMITS_S,
-  newQuestion, questionIssues, type DraftQuestion as Question,
+  DraftQuestion, EXPLANATION_MAX, MAX_QUESTIONS, OPTION_TEXT_MAX, POINTS_MAX, QUESTION_TEXT_MAX, QuestionTranslation, TIME_LIMITS_S,
+  isPointValue, newQuestion, questionIssues, type DraftQuestion as Question,
 } from './quiz';
 import { parseCsv } from './csv';
 
@@ -115,8 +115,8 @@ function rowProblems(
   if (time && !(TIME_LIMITS_S as readonly number[]).includes(Number(time))) {
     out.push(`“time” is ${time}; use one of ${TIME_LIMITS_S.join(', ')} seconds.`);
   }
-  if (points && !(POINT_VALUES as readonly number[]).includes(Number(points))) {
-    out.push(`“points” is ${points}; use one of ${POINT_VALUES.join(', ')}.`);
+  if (points && !isPointValue(Number(points))) {
+    out.push(`“points” is ${points}; use a whole number from 0 to ${POINTS_MAX}.`);
   }
   if (explanation.length > EXPLANATION_MAX) out.push(`“explanation” is longer than ${EXPLANATION_MAX} characters.`);
   return out;
